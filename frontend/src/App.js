@@ -55,11 +55,9 @@ function App() {
       
       // TURN сервер для надежного WebRTC (основной)
       {
-        urls: process.env.REACT_APP_TURN_SERVER_URL ? 
-          `turn:${process.env.REACT_APP_TURN_SERVER_URL.replace('https://', '').replace('http://', '')}:3478` : 
-          'turn:turn-dist.onrender.com:3478',
+        urls: 'turn:turn-dist.onrender.com:3478',
         username: 'voicechat',
-        credential: process.env.REACT_APP_TURN_PASSWORD || 'turn123456'
+        credential: 'turn123456'  // Временно используем хардкод для тестирования
       },
       
       // Fallback TURN серверы (бесплатные)
