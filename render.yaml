@@ -1,0 +1,76 @@
+# Конфигурация для ручного деплоя на Render
+# Blueprint недоступен в бесплатном плане
+
+services:
+  # Backend API Service
+  - type: web
+    name: voice-chat-backend
+    env: python
+    pythonVersion: "3.11.9"
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/
+    envVars:
+      - key: MONGO_URL
+        sync: false
+        description: "MongoDB Atlas connection string"
+      - key: DB_NAME
+        value: voice_chat_db
+        description: "Database name"
+      - key: CORS_ORIGINS
+        sync: false
+        description: "Frontend URL for CORS (comma-separated if multiple)"
+      - key: TURN_SERVER_URL
+        fromService:
+          type: web
+          name: voice-chat-turn
+          property: host
+        description: "TURN server URL for WebRTC"
+    rootDir: backend
+
+  # Frontend Static Site
+  - type: web
+    name: voice-chat-frontend
+    env: static
+    buildCommand: yarn install && yarn build
+    staticPublishPath: ./build
+    envVars:
+      - key: REACT_APP_BACKEND_URL
+        fromService:
+          type: web
+          name: voice-chat-backend
+          property: host
+        description: "Backend service URL"
+      - key: REACT_APP_TURN_SERVER_URL
+        fromService:
+          type: web
+          name: voice-chat-turn
+          property: host
+        description: "TURN server URL for WebRTC"
+    rootDir: frontend
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # TURN Server для WebRTC
+  - type: web
+    name: voice-chat-turn
+    env: docker
+    dockerfilePath: ./turn/Dockerfile
+    dockerContext: ./turn
+    envVars:
+      - key: TURN_USERNAME
+        value: "voicechat"
+        description: "TURN server username"
+      - key: TURN_PASSWORD
+        sync: false
+        description: "TURN server password (установите вручную)"
+      - key: EXTERNAL_IP
+        sync: false
+        description: "External IP address (Render автоматически установит)"
+    healthCheckPath: /health
+    rootDir: turn
+
+# Примечание: MongoDB Atlas нужно настроить отдельно
+# Инструкции в README_RENDER_DEPLOY.md

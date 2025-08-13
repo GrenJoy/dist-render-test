@@ -1,0 +1,10 @@
+Git команды для настройки репозитория:
+
+1. git init
+2. git remote add origin https://github.com/GrenJoy/disc-render.git
+3. git add .
+4. git commit -m "Initial commit: Fix deployment compatibility issues"
+5. git branch -M main
+6. git push -u origin main
+
+Выполните эти команды по очереди в командной строке или терминале.
