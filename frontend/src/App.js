@@ -46,31 +46,15 @@ function App() {
   const remoteAudioRef = useRef(null);
   const audioContextRef = useRef(null);
 
-  // WebRTC configuration with TURN server
+  // WebRTC configuration with STUN servers only
   const rtcConfig = {
     iceServers: [
-      // STUN серверы (бесплатные)
+      // STUN серверы (бесплатные, надежные)
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
-      
-      // TURN сервер для надежного WebRTC (основной)
-      {
-        urls: 'turn:turn-dist.onrender.com:3478',
-        username: 'voicechat',
-        credential: 'turn123456'  // Временно используем хардкод для тестирования
-      },
-      
-      // Fallback TURN серверы (бесплатные)
-      {
-        urls: 'turn:openrelay.metered.ca:80',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      },
-      {
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      }
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' }
     ],
     iceCandidatePoolSize: 10,
     iceTransportPolicy: 'all',
