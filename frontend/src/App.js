@@ -80,6 +80,13 @@ function App() {
     rtcpMuxPolicy: 'require'
   };
 
+  // Добавляем логирование для отладки WebRTC
+  useEffect(() => {
+    console.log('WebRTC Config:', rtcConfig);
+    console.log('TURN Server URL:', process.env.REACT_APP_TURN_SERVER_URL);
+    console.log('TURN Password:', process.env.REACT_APP_TURN_PASSWORD);
+  }, []);
+
   // Generate user ID
   function generateUserId() {
     return Math.random().toString(36).substring(2, 15);

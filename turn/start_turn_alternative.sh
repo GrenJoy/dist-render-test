@@ -1,41 +1,100 @@
 #!/bin/bash
 
-# Скрипт запуска TURN сервера и health check (для готового образа)
-# Получаем внешний IP из переменной окружения или определяем автоматически
+# Альтернативный скрипт запуска TURN сервера
+# С лучшей обработкой ошибок и логированием
 
-if [ -z "$EXTERNAL_IP" ]; then
-    # Если EXTERNAL_IP не задан, используем 0.0.0.0
-    EXTERNAL_IP="0.0.0.0"
+set -e  # Останавливаемся при ошибке
+
+echo "=== TURN Server Startup Script ==="
+echo "Timestamp: $(date)"
+
+# Функция для логирования
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+}
+
+# Проверяем переменные окружения
+log "Checking environment variables..."
+
+if [ -z "$TURN_PASSWORD" ]; then
+    log "ERROR: TURN_PASSWORD not set"
+    exit 1
 fi
 
-# Заменяем переменную в конфигурации
-sed -i "s/\$EXTERNAL_IP/$EXTERNAL_IP/g" /etc/turnserver/turnserver.conf
+log "TURN_PASSWORD: [SET]"
+log "TURN_USERNAME: ${TURN_USERNAME:-voicechat}"
 
-# Запуск health check сервера в фоне
-echo "Starting health check server..."
+# Получаем внешний IP
+log "Getting external IP address..."
+
+# Попробуем несколько сервисов для получения IP
+EXTERNAL_IP=""
+for service in "ifconfig.me" "icanhazip.com" "ipinfo.io/ip" "checkip.amazonaws.com"; do
+    log "Trying $service..."
+    EXTERNAL_IP=$(curl -s --max-time 10 "$service" || echo "")
+    if [ -n "$EXTERNAL_IP" ] && [ "$EXTERNAL_IP" != "0.0.0.0" ]; then
+        log "Successfully got IP from $service: $EXTERNAL_IP"
+        break
+    fi
+done
+
+if [ -z "$EXTERNAL_IP" ] || [ "$EXTERNAL_IP" = "0.0.0.0" ]; then
+    log "ERROR: Failed to get external IP from all services"
+    log "Please set EXTERNAL_IP manually in Render environment variables"
+    exit 1
+fi
+
+log "External IP: $EXTERNAL_IP"
+
+# Обновляем конфигурацию
+log "Updating TURN server configuration..."
+sed -i "s/\$EXTERNAL_IP/$EXTERNAL_IP/g" /etc/turnserver/turnserver.conf
+sed -i "s/\${TURN_PASSWORD}/$TURN_PASSWORD/g" /etc/turnserver/turnserver.conf
+
+# Показываем финальную конфигурацию
+log "Final TURN server configuration:"
+echo "----------------------------------------"
+cat /etc/turnserver/turnserver.conf
+echo "----------------------------------------"
+
+# Запускаем health check сервер
+log "Starting health check server..."
 python3 /usr/local/bin/health_check.py &
 HEALTH_CHECK_PID=$!
+log "Health check server started with PID: $HEALTH_CHECK_PID"
 
-# Запуск TURN сервера с готовым образом
-echo "Starting TURN server with external IP: $EXTERNAL_IP"
-echo "TURN server configuration:"
-cat /etc/turnserver/turnserver.conf
-
-# Запуск с конфигурацией (используем готовый turnserver)
+# Запускаем TURN сервер
+log "Starting TURN server..."
 turnserver -c /etc/turnserver/turnserver.conf &
 TURN_PID=$!
+log "TURN server started with PID: $TURN_PID"
 
 # Функция для graceful shutdown
 cleanup() {
-    echo "Shutting down services..."
-    kill $HEALTH_CHECK_PID 2>/dev/null
-    kill $TURN_PID 2>/dev/null
-    wait
+    log "Received shutdown signal, cleaning up..."
+    
+    if [ -n "$HEALTH_CHECK_PID" ]; then
+        log "Stopping health check server (PID: $HEALTH_CHECK_PID)..."
+        kill $HEALTH_CHECK_PID 2>/dev/null || true
+    fi
+    
+    if [ -n "$TURN_PID" ]; then
+        log "Stopping TURN server (PID: $TURN_PID)..."
+        kill $TURN_PID 2>/dev/null || true
+    fi
+    
+    log "Waiting for processes to finish..."
+    wait 2>/dev/null || true
+    
+    log "Cleanup completed"
     exit 0
 }
 
-# Обработка сигналов для graceful shutdown
+# Обработка сигналов
 trap cleanup SIGTERM SIGINT
 
-# Ожидание завершения процессов
+log "All services started successfully"
+log "Waiting for processes..."
+
+# Ожидаем завершения процессов
 wait

@@ -396,10 +396,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str = 
 # Include the router in the main app
 app.include_router(api_router)
 
+# CORS настройки для фронтенда
+cors_origins = os.environ.get('CORS_ORIGINS', '*')
+if cors_origins != '*':
+    cors_origins = [origin.strip() for origin in cors_origins.split(',')]
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

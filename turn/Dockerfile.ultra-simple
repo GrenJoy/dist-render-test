@@ -1,13 +1,22 @@
 FROM coturn/coturn:latest
 
-# Ультра-простой Dockerfile
-# Просто запускаем TURN сервер с конфигурацией
+# Устанавливаем необходимые инструменты
+RUN apt-get update && apt-get install -y \
+    curl \
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
 
-# Копирование конфигурации
+# Копирование файлов
 COPY turnserver.conf /etc/turnserver/
+COPY start_turn.sh /usr/local/bin/
+COPY health_check.py /usr/local/bin/
+
+# Делаем скрипт исполняемым
+RUN chmod +x /usr/local/bin/start_turn.sh
 
 # Открытие портов
 EXPOSE 3478 3478/udp 5349 5349/udp
 
-# Запуск TURN сервера
-CMD ["turnserver", "-c", "/etc/turnserver/turnserver.conf"]
+# Запуск через скрипт
+CMD ["/usr/local/bin/start_turn.sh"]

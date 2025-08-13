@@ -1,24 +1,36 @@
 FROM coturn/coturn:latest
 
-# Установка Python для health check
-RUN apk add --no-cache python3 py3-pip
+# Устанавливаем необходимые инструменты
+RUN apt-get update && apt-get install -y \
+    curl \
+    python3 \
+    python3-pip \
+    iputils-ping \
+    net-tools \
+    && rm -rf /var/lib/apt/lists/*
 
-# Создание директорий
-RUN mkdir -p /etc/turnserver
+# Создаем директорию для логов
+RUN mkdir -p /var/log/turnserver
 
-# Копирование конфигурации
+# Копирование файлов
 COPY turnserver.conf /etc/turnserver/
-
-# Копирование health check
+COPY start_turn_alternative.sh /usr/local/bin/
 COPY health_check.py /usr/local/bin/
-RUN chmod +x /usr/local/bin/health_check.py
 
-# Копирование скрипта запуска
-COPY start_turn.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/start_turn.sh
+# Делаем скрипт исполняемым
+RUN chmod +x /usr/local/bin/start_turn_alternative.sh
+
+# Создаем пользователя для TURN сервера
+RUN useradd -r -s /bin/false turnserver
+
+# Устанавливаем права на файлы
+RUN chown -R turnserver:turnserver /etc/turnserver /var/log/turnserver
 
 # Открытие портов
-EXPOSE 3478 3478/udp 5349 5349/udp 8080
+EXPOSE 3478 3478/udp 5349 5349/udp
 
-# Запуск
-CMD ["/usr/local/bin/start_turn.sh"]
+# Переключаемся на пользователя turnserver
+USER turnserver
+
+# Запуск через альтернативный скрипт
+CMD ["/usr/local/bin/start_turn_alternative.sh"]

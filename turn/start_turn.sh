@@ -1,11 +1,18 @@
 #!/bin/bash
 
 # Скрипт запуска TURN сервера и health check
-# Получаем внешний IP из переменной окружения или определяем автоматически
+# Получаем внешний IP автоматически, если не задан
 
 if [ -z "$EXTERNAL_IP" ]; then
-    # Если EXTERNAL_IP не задан, используем 0.0.0.0
-    EXTERNAL_IP="0.0.0.0"
+    echo "Получаем внешний IP автоматически..."
+    EXTERNAL_IP=$(curl -s ifconfig.me || curl -s icanhazip.com || curl -s ipinfo.io/ip || echo "")
+    
+    if [ -z "$EXTERNAL_IP" ] || [ "$EXTERNAL_IP" = "0.0.0.0" ]; then
+        echo "Ошибка: не удалось получить внешний IP. Установите EXTERNAL_IP вручную в env Render."
+        exit 1
+    fi
+    
+    echo "Получен внешний IP: $EXTERNAL_IP"
 fi
 
 # Заменяем переменную в конфигурации

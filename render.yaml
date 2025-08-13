@@ -9,7 +9,7 @@ services:
     pythonVersion: "3.11.9"
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /api/
+    healthCheckPath: /api/health
     envVars:
       - key: MONGO_URL
         sync: false
@@ -18,13 +18,10 @@ services:
         value: voice_chat_db
         description: "Database name"
       - key: CORS_ORIGINS
-        sync: false
-        description: "Frontend URL for CORS (comma-separated if multiple)"
+        value: "https://dist-render-test-1.onrender.com,https://dist-render-test.onrender.com"
+        description: "Frontend URL for CORS"
       - key: TURN_SERVER_URL
-        fromService:
-          type: web
-          name: voice-chat-turn
-          property: host
+        value: "turn-dist.onrender.com"
         description: "TURN server URL for WebRTC"
     rootDir: backend
 
@@ -36,38 +33,29 @@ services:
     startCommand: yarn serve
     envVars:
       - key: REACT_APP_BACKEND_URL
-        fromService:
-          type: web
-          name: voice-chat-backend
-          property: host
+        value: "https://dist-render-test.onrender.com"
         description: "Backend service URL"
       - key: REACT_APP_TURN_SERVER_URL
-        fromService:
-          type: web
-          name: voice-chat-turn
-          property: host
+        value: "turn-dist.onrender.com"
         description: "TURN server URL for WebRTC"
       - key: REACT_APP_TURN_PASSWORD
-        fromService:
-          type: web
-          name: voice-chat-turn
-          envVarKey: TURN_PASSWORD
+        value: "turn123456"
         description: "TURN server password"
     rootDir: frontend
 
-  # TURN Server для WebRTC (ультра-простой вариант)
+  # TURN Server для WebRTC
   - type: web
     name: voice-chat-turn
     env: docker
-    dockerfilePath: ./turn/Dockerfile.ultra-simple
+    dockerfilePath: ./turn/Dockerfile.alternative
     dockerContext: ./turn
     envVars:
       - key: TURN_USERNAME
         value: "voicechat"
         description: "TURN server username"
       - key: TURN_PASSWORD
-        sync: false
-        description: "TURN server password (установите вручную)"
+        value: "turn123456"
+        description: "TURN server password"
       - key: EXTERNAL_IP
         sync: false
         description: "External IP address (Render автоматически установит)"
