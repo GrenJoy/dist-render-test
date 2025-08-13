@@ -1,0 +1,13 @@
+FROM coturn/coturn:latest
+
+# Ультра-простой Dockerfile
+# Просто запускаем TURN сервер с конфигурацией
+
+# Копирование конфигурации
+COPY turnserver.conf /etc/turnserver/
+
+# Открытие портов
+EXPOSE 3478 3478/udp 5349 5349/udp
+
+# Запуск TURN сервера
+CMD ["turnserver", "-c", "/etc/turnserver/turnserver.conf"]

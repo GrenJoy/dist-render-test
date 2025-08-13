@@ -63,7 +63,7 @@ git push -u origin main
    - Connect Repository: тот же репозиторий
    - Name: `voice-chat-turn`
    - Environment: `Docker`
-   - **Dockerfile Path**: `./turn/Dockerfile.simple` ⚠️ **ВАЖНО!**
+   - **Dockerfile Path**: `./turn/Dockerfile.ultra-simple` ⚠️ **ВАЖНО!**
    - Root Directory: `turn`
 
 2. **Настрой переменные окружения**:
@@ -73,7 +73,7 @@ git push -u origin main
 
 3. **Нажми Create Web Service**
 
-**💡 Примечание**: Используем `Dockerfile.simple` для быстрой и надежной сборки!
+**💡 Примечание**: Используем `Dockerfile.ultra-simple` для максимально быстрой и надежной сборки!
 
 #### Шаг 3: Создание Frontend
 
@@ -150,7 +150,7 @@ REACT_APP_TURN_SERVER_URL=https://voice-chat-turn.onrender.com
 ### Если TURN сервер не запускается:
 
 1. **Проверь логи** в Render Dashboard
-2. **Убедись**, что используешь `Dockerfile.simple`
+2. **Убедись**, что используешь `Dockerfile.ultra-simple`
 3. **Проверь переменные окружения**
 
 ### Если голос не работает:

@@ -53,11 +53,11 @@ services:
         source: /*
         destination: /index.html
 
-  # TURN Server для WebRTC (простой вариант без health check)
+  # TURN Server для WebRTC (ультра-простой вариант)
   - type: web
     name: voice-chat-turn
     env: docker
-    dockerfilePath: ./turn/Dockerfile.simple
+    dockerfilePath: ./turn/Dockerfile.ultra-simple
     dockerContext: ./turn
     envVars:
       - key: TURN_USERNAME
