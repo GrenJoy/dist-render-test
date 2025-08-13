@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Backend Testing Suite for Voice Chat WebRTC Application
-Tests WebSocket signaling server, room management API, and connection management
+Backend Testing Suite for Discord-like Voice Chat Application
+Tests WebSocket signaling server, room management API, chat functionality, and file uploads
 """
 
 import asyncio
@@ -12,17 +12,22 @@ import uuid
 from datetime import datetime
 import time
 import os
+import io
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv('/app/frontend/.env')
+# Try to load environment variables from different locations
+env_paths = ['/app/frontend/.env', '/app/backend/.env', '/app/.env']
+for env_path in env_paths:
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+        break
 
-# Get backend URL from frontend environment
+# Get backend URL from environment or use default
 BACKEND_URL = os.getenv('REACT_APP_BACKEND_URL', 'https://voice-connect-22.preview.emergentagent.com')
 API_BASE = f"{BACKEND_URL}/api"
 WS_BASE = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + "/api"
 
-print(f"Testing backend at: {API_BASE}")
+print(f"Testing Discord-like backend at: {API_BASE}")
 print(f"Testing WebSocket at: {WS_BASE}")
 
 class VoiceChatTester:
