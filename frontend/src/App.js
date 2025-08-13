@@ -61,7 +61,11 @@ function App() {
         username: 'voicechat',
         credential: process.env.REACT_APP_TURN_PASSWORD || 'turn123456'
       },
-      
+      {
+        urls: 'turn:turn-dist.onrender.com:3478',
+        username: 'voicechat',
+        credential: 'turn123456'
+      },
       // Fallback TURN серверы (бесплатные)
       {
         urls: 'turn:openrelay.metered.ca:80',

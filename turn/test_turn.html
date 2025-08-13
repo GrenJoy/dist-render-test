@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TURN Server Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .log { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .error { color: red; }
+        .success { color: green; }
+        button { padding: 10px 20px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Тест TURN сервера</h1>
+    
+    <div>
+        <label>TURN Server URL:</label>
+        <input type="text" id="turnUrl" value="turn-dist.onrender.com" style="width: 300px;">
+    </div>
+    <div>
+        <label>Username:</label>
+        <input type="text" id="username" value="voicechat" style="width: 200px;">
+    </div>
+    <div>
+        <label>Password:</label>
+        <input type="password" id="password" placeholder="Введите пароль" style="width: 200px;">
+    </div>
+    
+    <div style="margin: 20px 0;">
+        <button onclick="testTurnServer()">🧪 Тестировать TURN сервер</button>
+        <button onclick="clearLog()">🗑️ Очистить лог</button>
+    </div>
+    
+    <div class="log" id="log">
+        <strong>Лог тестирования:</strong><br>
+        Нажмите "Тестировать TURN сервер" для начала проверки...
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+            logDiv.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '<strong>Лог тестирования:</strong><br>';
+        }
+
+        async function testTurnServer() {
+            const turnUrl = document.getElementById('turnUrl').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (!password) {
+                log('❌ Введите пароль!', 'error');
+                return;
+            }
+            
+            log('🚀 Начинаю тест TURN сервера...');
+            log(`📍 URL: ${turnUrl}`);
+            log(`👤 Username: ${username}`);
+            log(`🔑 Password: ${password ? '***' : 'НЕ УКАЗАН'}`);
+            
+            try {
+                // Создаем RTCPeerConnection с TURN сервером
+                const configuration = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        {
+                            urls: `turn:${turnUrl}:3478`,
+                            username: username,
+                            credential: password
+                        }
+                    ]
+                };
+                
+                log('📡 Создаю RTCPeerConnection...');
+                const pc = new RTCPeerConnection(configuration);
+                
+                // Слушаем ICE candidates
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        log(`🎯 ICE Candidate: ${event.candidate.type} - ${event.candidate.address}`, 'success');
+                        
+                        if (event.candidate.type === 'relay') {
+                            log('✅ TURN сервер работает! Получен relay candidate', 'success');
+                        }
+                    }
+                };
+                
+                pc.oniceconnectionstatechange = () => {
+                    log(`🔗 ICE Connection State: ${pc.iceConnectionState}`);
+                };
+                
+                pc.onconnectionstatechange = () => {
+                    log(`🌐 Connection State: ${pc.connectionState}`);
+                };
+                
+                // Создаем offer для активации ICE
+                log('📝 Создаю offer...');
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                log('⏳ Жду ICE candidates...');
+                
+                // Ждем 10 секунд для сбора ICE candidates
+                setTimeout(() => {
+                    log('⏰ Время ожидания истекло');
+                    pc.close();
+                    
+                    // Проверяем, были ли relay candidates
+                    if (pc.iceConnectionState === 'checking' || pc.iceConnectionState === 'connected') {
+                        log('✅ TURN сервер работает корректно!', 'success');
+                    } else {
+                        log('❌ TURN сервер не отвечает или неправильные credentials', 'error');
+                    }
+                }, 10000);
+                
+            } catch (error) {
+                log(`❌ Ошибка: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
