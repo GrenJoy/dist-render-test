@@ -271,7 +271,10 @@ function App() {
       return;
     }
 
-    if (isConnected) return;
+    // Если уже подключены к другой комнате, сначала отключимся
+    if (isConnected) {
+      await disconnectFromRoom();
+    }
 
     setConnectionStatus('connecting');
 
@@ -544,8 +547,15 @@ function App() {
 
   // Disconnect from room
   const disconnectFromRoom = () => {
+    console.log('Disconnecting from room...');
+    
     if (websocketRef.current) {
-      websocketRef.current.close();
+      try {
+        websocketRef.current.close();
+        console.log('WebSocket closed');
+      } catch (error) {
+        console.warn('Error closing WebSocket:', error);
+      }
       websocketRef.current = null;
     }
     
@@ -557,6 +567,20 @@ function App() {
     setUsers([]);
     setMessages([]);
     setPeerConnectionState('new');
+    
+    console.log('Disconnected from room');
+  };
+
+  // Change room
+  const changeRoom = async (newRoomId) => {
+    console.log('Changing room from', roomId, 'to', newRoomId);
+    
+    if (isConnected) {
+      await disconnectFromRoom();
+    }
+    
+    setRoomId(newRoomId);
+    await connectToRoom();
   };
 
   // Reset WebRTC
