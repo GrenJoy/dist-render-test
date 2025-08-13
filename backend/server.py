@@ -53,38 +53,69 @@ class User(BaseModel):
     is_online: bool = True
     is_in_voice: bool = False
 
-# WebRTC Signaling
+# WebRTC Signaling and Chat
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[str, List[WebSocket]] = {}  # room_id -> list of websockets
-        self.connection_rooms: Dict[WebSocket, str] = {}  # websocket -> room_id
+        self.active_connections: Dict[str, List[Dict]] = {}  # room_id -> list of {websocket, user_id, username}
+        self.connection_users: Dict[WebSocket, Dict] = {}  # websocket -> {room_id, user_id, username}
 
-    async def connect(self, websocket: WebSocket, room_id: str):
+    async def connect(self, websocket: WebSocket, room_id: str, user_id: str, username: str):
         await websocket.accept()
         
         if room_id not in self.active_connections:
             self.active_connections[room_id] = []
         
-        self.active_connections[room_id].append(websocket)
-        self.connection_rooms[websocket] = room_id
+        user_data = {
+            'websocket': websocket,
+            'user_id': user_id,
+            'username': username,
+            'is_in_voice': False
+        }
         
-        # Notify others in room about new connection
+        self.active_connections[room_id].append(user_data)
+        self.connection_users[websocket] = {
+            'room_id': room_id,
+            'user_id': user_id,
+            'username': username
+        }
+        
+        # Update user status in database
+        await db.users.update_one(
+            {"id": user_id},
+            {"$set": {"is_online": True, "username": username}},
+            upsert=True
+        )
+        
+        # Notify others in room about new connection  
         await self.broadcast_to_room(room_id, {
             "type": "user_joined",
             "room_id": room_id,
+            "user": {
+                "id": user_id,
+                "username": username,
+                "is_in_voice": False
+            },
             "total_users": len(self.active_connections[room_id])
         }, exclude=websocket)
 
     def disconnect(self, websocket: WebSocket):
-        room_id = self.connection_rooms.get(websocket)
-        if room_id and room_id in self.active_connections:
-            self.active_connections[room_id].remove(websocket)
-            if websocket in self.connection_rooms:
-                del self.connection_rooms[websocket]
-            
-            # Clean up empty rooms
-            if not self.active_connections[room_id]:
-                del self.active_connections[room_id]
+        user_data = self.connection_users.get(websocket)
+        if user_data:
+            room_id = user_data['room_id']
+            if room_id in self.active_connections:
+                # Remove user from room
+                self.active_connections[room_id] = [
+                    conn for conn in self.active_connections[room_id] 
+                    if conn['websocket'] != websocket
+                ]
+                
+                # Clean up empty rooms
+                if not self.active_connections[room_id]:
+                    del self.active_connections[room_id]
+                    
+            del self.connection_users[websocket]
+            return user_data
+        return None
 
     async def send_personal_message(self, message: dict, websocket: WebSocket):
         try:
@@ -94,12 +125,32 @@ class ConnectionManager:
 
     async def broadcast_to_room(self, room_id: str, message: dict, exclude: WebSocket = None):
         if room_id in self.active_connections:
-            for connection in self.active_connections[room_id]:
+            for connection_data in self.active_connections[room_id]:
+                connection = connection_data['websocket']
                 if connection != exclude:
                     try:
                         await connection.send_text(json.dumps(message))
                     except:
                         pass
+
+    def get_room_users(self, room_id: str):
+        if room_id in self.active_connections:
+            return [
+                {
+                    "id": conn['user_id'],
+                    "username": conn['username'],
+                    "is_in_voice": conn.get('is_in_voice', False)
+                }
+                for conn in self.active_connections[room_id]
+            ]
+        return []
+
+    async def update_voice_status(self, room_id: str, user_id: str, is_in_voice: bool):
+        if room_id in self.active_connections:
+            for conn in self.active_connections[room_id]:
+                if conn['user_id'] == user_id:
+                    conn['is_in_voice'] = is_in_voice
+                    break
 
 manager = ConnectionManager()
 
