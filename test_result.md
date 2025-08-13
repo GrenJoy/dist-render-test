@@ -206,10 +206,7 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "Обновление TURN серверов для работы без VPN"
-    - "Расширение API для чата и загрузки файлов"
-    - "Улучшенный WebSocket для чата и голосовых вызовов"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
