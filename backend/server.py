@@ -18,16 +18,40 @@ import shutil
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+# Create uploads directory
+uploads_dir = Path("uploads")
+uploads_dir.mkdir(exist_ok=True)
+
 # Create the main app without a prefix
 app = FastAPI()
 
+# Serve uploaded files
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
+
+# Pydantic models
+class ChatMessage(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    room_id: str
+    user_id: str
+    username: str
+    message: str
+    message_type: str = "text"  # text, image, file
+    file_url: Optional[str] = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+class User(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    username: str
+    avatar_url: Optional[str] = None
+    is_online: bool = True
+    is_in_voice: bool = False
 
 # WebRTC Signaling
 class ConnectionManager:
