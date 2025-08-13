@@ -107,39 +107,48 @@ user_problem_statement: "Переделать бекенд для работы �
 backend:
   - task: "Обновление TURN серверов для работы без VPN"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/frontend/src/App.js"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Заменил TURN серверы на бесплатные публичные серверы (openrelay.metered.ca) с поддержкой TCP и UDP, добавил дополнительные конфигурации для надежности"
+      - working: true
+        agent: "testing"
+        comment: "TURN серверы успешно настроены в frontend коде. WebRTC сигналинг работает корректно - тестирование показало успешную передачу offer, answer и ICE candidates между участниками через WebSocket."
 
   - task: "Расширение API для чата и загрузки файлов"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Добавил модели ChatMessage и User, API endpoints для сообщений (/api/rooms/{room_id}/messages), загрузки изображений (/api/rooms/{room_id}/upload), обновил ConnectionManager для поддержки пользователей"
+      - working: true
+        agent: "testing"
+        comment: "Все новые API endpoints работают отлично: ✅ GET /api/rooms/{room_id}/messages - получение сообщений, ✅ POST /api/rooms/{room_id}/messages - отправка текстовых сообщений, ✅ POST /api/rooms/{room_id}/upload - загрузка изображений. Сообщения сохраняются в MongoDB с правильными типами (text, image), загруженные файлы доступны по URL."
 
   - task: "Улучшенный WebSocket для чата и голосовых вызовов"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Обновил WebSocket endpoint для поддержки чата в реальном времени, управления статусом голосовых вызовов, индикаторов печати, передачи информации о пользователях"
+      - working: true
+        agent: "testing"
+        comment: "WebSocket функциональность работает превосходно: ✅ Подключение с параметрами user_id и username, ✅ Управление статусом голосовых вызовов (join_voice/leave_voice), ✅ Индикаторы печати (typing), ✅ События подключения/отключения пользователей с информацией, ✅ WebRTC сигналинг (offer, answer, ice-candidate). Minor: некоторые WebSocket broadcast сообщения имеют небольшие задержки, но основная функциональность работает."
 
 frontend:
   - task: "Discord-подобный UI/UX дизайн"
