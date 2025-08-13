@@ -1,36 +1,50 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import axios from 'axios';
+import Sidebar from './components/Sidebar';
+import Chat from './components/Chat';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 const WS_URL = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
 
 function App() {
+  // Room and connection state
   const [roomId, setRoomId] = useState('');
   const [currentRoom, setCurrentRoom] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  
+  // User state
+  const [currentUser, setCurrentUser] = useState({
+    id: localStorage.getItem('userId') || generateUserId(),
+    username: localStorage.getItem('username') || ''
+  });
+  const [users, setUsers] = useState([]);
+  
+  // Voice state
+  const [isInVoice, setIsInVoice] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(80);
   const [audioLevel, setAudioLevel] = useState(0);
   const [remoteAudioLevel, setRemoteAudioLevel] = useState(0);
-  const [connectionStatus, setConnectionStatus] = useState('disconnected');
-  const [activeUsers, setActiveUsers] = useState(0);
-  const [volume, setVolume] = useState(80);
+  
+  // Chat state
+  const [messages, setMessages] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [showRooms, setShowRooms] = useState(false);
+  
+  // WebRTC state
   const [peerConnectionState, setPeerConnectionState] = useState('new');
   const [pendingIceCandidates, setPendingIceCandidates] = useState([]);
 
-  // WebRTC and WebSocket refs
+  // Refs
   const localStreamRef = useRef(null);
   const remoteStreamRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const websocketRef = useRef(null);
-  const localAudioRef = useRef(null);
   const remoteAudioRef = useRef(null);
   const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const remoteAnalyserRef = useRef(null);
 
   // WebRTC configuration with free TURN servers
   const rtcConfig = {
@@ -65,10 +79,22 @@ function App() {
     rtcpMuxPolicy: 'require'
   };
 
+  // Generate user ID
+  function generateUserId() {
+    return Math.random().toString(36).substring(2, 15);
+  }
+
   // Generate random room ID
   const generateRoomId = () => {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
   };
+
+  // Initialize user
+  useEffect(() => {
+    if (!localStorage.getItem('userId')) {
+      localStorage.setItem('userId', currentUser.id);
+    }
+  }, [currentUser.id]);
 
   // Load existing rooms
   const loadRooms = async () => {
@@ -80,7 +106,7 @@ function App() {
     }
   };
 
-  // Audio level monitoring
+  // Audio level monitoring with noise suppression
   const monitorAudioLevel = (stream, setLevel) => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -90,16 +116,34 @@ function App() {
     const analyser = audioContext.createAnalyser();
     const source = audioContext.createMediaStreamSource(stream);
     
+    // Add noise suppression filter
+    const filter = audioContext.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(300, audioContext.currentTime); // Filter out low frequencies
+    
+    const compressor = audioContext.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-24, audioContext.currentTime);
+    compressor.knee.setValueAtTime(30, audioContext.currentTime);
+    compressor.ratio.setValueAtTime(12, audioContext.currentTime);
+    compressor.attack.setValueAtTime(0.003, audioContext.currentTime);
+    compressor.release.setValueAtTime(0.25, audioContext.currentTime);
+    
     analyser.fftSize = 256;
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
 
-    source.connect(analyser);
+    // Connect audio nodes
+    source.connect(filter);
+    filter.connect(compressor);
+    compressor.connect(analyser);
 
     const updateLevel = () => {
       analyser.getByteFrequencyData(dataArray);
       const average = dataArray.reduce((a, b) => a + b) / bufferLength;
-      setLevel(Math.min(100, (average / 255) * 100));
+      const level = Math.min(100, (average / 255) * 100);
+      
+      // Only show level if above noise threshold
+      setLevel(level > 5 ? level : 0);
       
       if (stream.active) {
         requestAnimationFrame(updateLevel);
@@ -112,31 +156,30 @@ function App() {
   // Initialize WebRTC
   const initWebRTC = async () => {
     try {
-      // Check if PeerConnection already exists
       if (peerConnectionRef.current) {
         console.log('PeerConnection already exists, reusing');
         return true;
       }
 
-      // Get user media
+      // Get user media with enhanced audio settings
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true
+          autoGainControl: true,
+          sampleRate: 48000,
+          channelCount: 1
         } 
       });
       
       localStreamRef.current = stream;
-      
-      // Monitor local audio level
       monitorAudioLevel(stream, setAudioLevel);
 
       // Create peer connection
       const peerConnection = new RTCPeerConnection(rtcConfig);
       peerConnectionRef.current = peerConnection;
 
-      // Add local stream to peer connection
+      // Add local stream
       stream.getTracks().forEach(track => {
         peerConnection.addTrack(track, stream);
       });
@@ -151,7 +194,6 @@ function App() {
           remoteAudioRef.current.volume = volume / 100;
         }
 
-        // Monitor remote audio level
         monitorAudioLevel(remoteStream, setRemoteAudioLevel);
       };
 
@@ -168,35 +210,13 @@ function App() {
       // Handle connection state changes
       peerConnection.onconnectionstatechange = () => {
         setConnectionStatus(peerConnection.connectionState);
-        if (peerConnection.connectionState === 'connected') {
-          setIsConnected(true);
-        } else if (peerConnection.connectionState === 'disconnected' || 
-                   peerConnection.connectionState === 'failed') {
-          setIsConnected(false);
-        }
-      };
-
-      // Handle signaling state changes
-      peerConnection.onsignalingstatechange = () => {
-        console.log('Signaling state changed:', peerConnection.signalingState);
         setPeerConnectionState(peerConnection.signalingState);
-      };
-
-      // Handle ICE connection state changes
-      peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE connection state:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'connected') {
-          console.log('ICE connection established successfully!');
-        } else if (peerConnection.iceConnectionState === 'failed') {
-          console.error('ICE connection failed!');
-        }
-      };
-
-      // Handle ICE gathering state changes
-      peerConnection.onicegatheringstatechange = () => {
-        console.log('ICE gathering state:', peerConnection.iceGatheringState);
-        if (peerConnection.iceGatheringState === 'complete') {
-          console.log('ICE gathering completed');
+        
+        if (peerConnection.connectionState === 'connected') {
+          console.log('WebRTC connected successfully!');
+        } else if (peerConnection.connectionState === 'failed') {
+          console.error('WebRTC connection failed!');
+          resetWebRTC();
         }
       };
 
@@ -215,241 +235,197 @@ function App() {
       return;
     }
 
-    // Prevent multiple connection attempts
-    if (isConnected || connectionStatus === 'connecting') {
-      console.log('Already connected or connecting, skipping');
+    if (!currentUser.username.trim()) {
+      const username = prompt('Введите ваше имя:');
+      if (!username) return;
+      
+      const updatedUser = { ...currentUser, username: username.trim() };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('username', username.trim());
       return;
     }
+
+    if (isConnected) return;
 
     setConnectionStatus('connecting');
 
     try {
-      // First, create room in database if it doesn't exist
-      try {
-        await axios.post(`${API}/rooms`, {
-          name: `Room ${roomId}`,
-          id: roomId
-        });
-        console.log('Room created/verified in database');
-      } catch (error) {
-        if (error.response?.status === 409) {
-          console.log('Room already exists');
-        } else {
-          console.error('Error creating room:', error);
-        }
-      }
+      // Create room if doesn't exist
+      await axios.post(`${API}/rooms`, {
+        name: `Room ${roomId}`,
+        id: roomId
+      });
 
-      // Initialize WebRTC first
-      const webrtcInitialized = await initWebRTC();
-      if (!webrtcInitialized) return;
-
-      // Check if WebSocket already exists
-      if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
-        console.log('WebSocket already exists and open, reusing');
-        return;
-      }
-
-      // Connect to WebSocket
-      const ws = new WebSocket(`${WS_URL}/api/ws/${roomId}`);
+      // Connect WebSocket with user info
+      const ws = new WebSocket(`${WS_URL}/api/ws/${roomId}?user_id=${currentUser.id}&username=${encodeURIComponent(currentUser.username)}`);
       websocketRef.current = ws;
 
       ws.onopen = () => {
         console.log('WebSocket connected to room:', roomId);
-        console.log('Sending join message...');
+        setIsConnected(true);
+        setConnectionStatus('connected');
         ws.send(JSON.stringify({ type: 'join', room_id: roomId }));
       };
 
       ws.onmessage = async (event) => {
         const message = JSON.parse(event.data);
-        console.log('WebSocket message received:', message.type, message);
+        console.log('WebSocket message:', message.type);
         
-        switch (message.type) {
-          case 'room_info':
-            setCurrentRoom(message.data);
-            setActiveUsers(message.data.active_users);
-            console.log('Room info received:', message.data);
-            
-            // If we're joining an existing room, wait for offer
-            if (message.data.active_users > 0) {
-              console.log('Joining existing room, waiting for offer from initiator');
-              setConnectionStatus('waiting_for_offer');
-            }
-            break;
-            
-          case 'user_joined':
-            setActiveUsers(message.total_users);
-            // Only create offer if we're the first user (initiator) and don't have an offer yet
-            if (peerConnectionRef.current && 
-                peerConnectionRef.current.signalingState === 'stable' && 
-                !peerConnectionRef.current.localDescription &&
-                message.total_users === 2) { // Only when second user joins
-              try {
-                console.log('Creating offer as initiator (first user)');
-                const offer = await peerConnectionRef.current.createOffer();
-                await peerConnectionRef.current.setLocalDescription(offer);
-                setPeerConnectionState('have-local-offer');
-                ws.send(JSON.stringify({
-                  type: 'offer',
-                  offer: offer
-                }));
-              } catch (error) {
-                console.error('Error creating offer:', error);
-              }
-            } else {
-              console.log('Skipping offer creation - not initiator or wrong state');
-            }
-            break;
-            
-          case 'user_left':
-            setActiveUsers(message.total_users);
-            break;
-            
-          case 'offer':
-            if (peerConnectionRef.current && peerConnectionRef.current.signalingState === 'stable') {
-              try {
-                console.log('Received offer, setting remote description');
-                await peerConnectionRef.current.setRemoteDescription(message.offer);
-                setPeerConnectionState('have-remote-offer');
-                
-                // Apply pending ICE candidates
-                if (pendingIceCandidates.length > 0) {
-                  console.log('Applying pending ICE candidates:', pendingIceCandidates.length);
-                  for (const candidate of pendingIceCandidates) {
-                    try {
-                      await peerConnectionRef.current.addIceCandidate(candidate);
-                      console.log('Pending ICE candidate applied');
-                    } catch (error) {
-                      console.error('Error applying pending ICE candidate:', error);
-                    }
-                  }
-                  setPendingIceCandidates([]);
-                }
-                
-                console.log('Creating answer');
-                const answer = await peerConnectionRef.current.createAnswer();
-                await peerConnectionRef.current.setLocalDescription(answer);
-                setPeerConnectionState('stable');
-                
-                ws.send(JSON.stringify({
-                  type: 'answer',
-                  answer: answer
-                }));
-                
-                // Update connection status
-                setConnectionStatus('connected');
-                setIsConnected(true);
-              } catch (error) {
-                console.error('Error handling offer:', error);
-                // Reset connection on error
-                resetWebRTC();
-              }
-            } else {
-              console.log('Ignoring offer - wrong signaling state:', peerConnectionRef.current?.signalingState);
-            }
-            break;
-            
-          case 'answer':
-            if (peerConnectionRef.current && peerConnectionRef.current.signalingState === 'have-local-offer') {
-              try {
-                console.log('Received answer, setting remote description');
-                await peerConnectionRef.current.setRemoteDescription(message.answer);
-                setPeerConnectionState('stable');
-                
-                // Update connection status
-                setConnectionStatus('connected');
-                setIsConnected(true);
-              } catch (error) {
-                console.error('Error handling answer:', error);
-              }
-            } else {
-              console.log('Ignoring answer - wrong signaling state:', peerConnectionRef.current?.signalingState);
-            }
-            break;
-            
-          case 'ice-candidate':
-            if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
-              try {
-                await peerConnectionRef.current.addIceCandidate(message.candidate);
-                console.log('ICE candidate added successfully');
-              } catch (error) {
-                console.error('Error adding ICE candidate:', error);
-              }
-            } else {
-              // Store ICE candidate for later
-              console.log('Storing ICE candidate for later - no remote description yet');
-              setPendingIceCandidates(prev => [...prev, message.candidate]);
-            }
-            break;
-        }
+        await handleWebSocketMessage(message, ws);
       };
 
       ws.onclose = () => {
         console.log('WebSocket disconnected');
         setIsConnected(false);
         setConnectionStatus('disconnected');
-        // Reset WebRTC for potential reconnection
         resetWebRTC();
       };
 
       ws.onerror = (error) => {
         console.error('WebSocket error:', error);
         setConnectionStatus('error');
-        // Reset WebRTC on error
-        resetWebRTC();
       };
 
     } catch (error) {
       console.error('Error connecting to room:', error);
       alert('Ошибка подключения к комнате');
+      setConnectionStatus('disconnected');
     }
   };
 
-  // Disconnect from room
-  const disconnectFromRoom = () => {
-    // Close WebSocket
+  // Handle WebSocket messages
+  const handleWebSocketMessage = async (message, ws) => {
+    switch (message.type) {
+      case 'room_info':
+        setCurrentRoom(message.data);
+        setUsers(message.data.users || []);
+        if (message.messages) {
+          setMessages(message.messages);
+        }
+        break;
+        
+      case 'user_joined':
+        setUsers(prev => {
+          const exists = prev.find(u => u.id === message.user.id);
+          if (exists) return prev;
+          return [...prev, message.user];
+        });
+        break;
+        
+      case 'user_left':
+        setUsers(prev => prev.filter(u => u.id !== message.user.id));
+        break;
+        
+      case 'user_voice_update':
+        setUsers(prev => 
+          prev.map(u => 
+            u.id === message.user_id 
+              ? { ...u, is_in_voice: message.is_in_voice }
+              : u
+          )
+        );
+        break;
+        
+      case 'new_message':
+        setMessages(prev => [...prev, message.message]);
+        break;
+        
+      case 'offer':
+        if (peerConnectionRef.current && peerConnectionRef.current.signalingState === 'stable') {
+          try {
+            await peerConnectionRef.current.setRemoteDescription(message.offer);
+            
+            // Apply pending ICE candidates
+            for (const candidate of pendingIceCandidates) {
+              await peerConnectionRef.current.addIceCandidate(candidate);
+            }
+            setPendingIceCandidates([]);
+            
+            const answer = await peerConnectionRef.current.createAnswer();
+            await peerConnectionRef.current.setLocalDescription(answer);
+            
+            ws.send(JSON.stringify({
+              type: 'answer',
+              answer: answer
+            }));
+          } catch (error) {
+            console.error('Error handling offer:', error);
+          }
+        }
+        break;
+        
+      case 'answer':
+        if (peerConnectionRef.current && peerConnectionRef.current.signalingState === 'have-local-offer') {
+          try {
+            await peerConnectionRef.current.setRemoteDescription(message.answer);
+          } catch (error) {
+            console.error('Error handling answer:', error);
+          }
+        }
+        break;
+        
+      case 'ice-candidate':
+        if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
+          try {
+            await peerConnectionRef.current.addIceCandidate(message.candidate);
+          } catch (error) {
+            console.error('Error adding ICE candidate:', error);
+          }
+        } else {
+          setPendingIceCandidates(prev => [...prev, message.candidate]);
+        }
+        break;
+    }
+  };
+
+  // Join voice call
+  const joinVoiceCall = async () => {
+    const webrtcInitialized = await initWebRTC();
+    if (!webrtcInitialized) return;
+
+    setIsInVoice(true);
+    
     if (websocketRef.current) {
-      websocketRef.current.close();
-      websocketRef.current = null;
+      websocketRef.current.send(JSON.stringify({ type: 'join_voice' }));
+      
+      // Create offer if we're the initiator
+      if (users.filter(u => u.is_in_voice).length === 0) {
+        try {
+          const offer = await peerConnectionRef.current.createOffer();
+          await peerConnectionRef.current.setLocalDescription(offer);
+          websocketRef.current.send(JSON.stringify({
+            type: 'offer',
+            offer: offer
+          }));
+        } catch (error) {
+          console.error('Error creating offer:', error);
+        }
+      }
     }
+  };
 
-    // Close peer connection
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
+  // Leave voice call
+  const leaveVoiceCall = () => {
+    setIsInVoice(false);
+    
+    if (websocketRef.current) {
+      websocketRef.current.send(JSON.stringify({ type: 'leave_voice' }));
     }
-
+    
     // Stop local stream
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
       localStreamRef.current = null;
     }
-
-    // Reset state
-    setIsConnected(false);
-    setConnectionStatus('disconnected');
-    setCurrentRoom(null);
-    setActiveUsers(0);
-    setPeerConnectionState('new');
-  };
-
-  // Reset WebRTC for reconnection
-  const resetWebRTC = () => {
-    console.log('Resetting WebRTC connection');
     
+    // Close peer connection
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
     
-    if (websocketRef.current) {
-      websocketRef.current.close();
-      websocketRef.current = null;
-    }
-    
-    setPeerConnectionState('new');
-    setConnectionStatus('disconnected');
-    setIsConnected(false);
-    setPendingIceCandidates([]); // Clear pending ICE candidates
+    setAudioLevel(0);
+    setRemoteAudioLevel(0);
   };
 
   // Toggle mute
@@ -471,6 +447,71 @@ function App() {
     }
   };
 
+  // Send message
+  const sendMessage = async (messageText) => {
+    try {
+      await axios.post(`${API}/rooms/${roomId}/messages`, {
+        user_id: currentUser.id,
+        username: currentUser.username,
+        message: messageText
+      });
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
+  };
+
+  // Upload file
+  const uploadFile = async (file) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('user_id', currentUser.id);
+      formData.append('username', currentUser.username);
+      
+      await axios.post(`${API}/rooms/${roomId}/upload`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      alert('Ошибка при загрузке файла');
+    }
+  };
+
+  // Disconnect from room
+  const disconnectFromRoom = () => {
+    if (websocketRef.current) {
+      websocketRef.current.close();
+      websocketRef.current = null;
+    }
+    
+    leaveVoiceCall();
+    
+    setIsConnected(false);
+    setConnectionStatus('disconnected');
+    setCurrentRoom(null);
+    setUsers([]);
+    setMessages([]);
+    setPeerConnectionState('new');
+  };
+
+  // Reset WebRTC
+  const resetWebRTC = () => {
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+    
+    setPeerConnectionState('new');
+    setPendingIceCandidates([]);
+  };
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -478,69 +519,112 @@ function App() {
     };
   }, []);
 
-  return (
-    <div className="app">
-      <div className="container">
-        <div className="header">
-          <h1>🎙️ Голосовой чат</h1>
-          <p>Общайтесь с друзьями из любой точки мира</p>
-        </div>
+  // Update username prompt
+  const promptUsername = () => {
+    const username = prompt('Введите ваше имя:', currentUser.username);
+    if (username && username.trim()) {
+      const updatedUser = { ...currentUser, username: username.trim() };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('username', username.trim());
+    }
+  };
 
-        <div className="main-content">
-          {!isConnected ? (
-            <div className="connection-panel">
-              <div className="room-input">
-                <label>ID комнаты:</label>
-                <div className="input-group">
+  return (
+    <div className="min-h-screen bg-gray-900 text-white">
+      {!isConnected ? (
+        // Connection Screen
+        <div className="min-h-screen flex items-center justify-center p-8">
+          <div className="max-w-md w-full space-y-8">
+            <div className="text-center">
+              <h1 className="text-4xl font-bold text-white mb-2">🎙️ Голосовой чат</h1>
+              <p className="text-gray-400">Общайтесь с друзьями из любой точки мира</p>
+            </div>
+
+            <div className="bg-gray-800 rounded-lg p-6 space-y-6">
+              {/* Username Input */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Ваше имя
+                </label>
+                <input
+                  type="text"
+                  value={currentUser.username}
+                  onChange={(e) => setCurrentUser(prev => ({ ...prev, username: e.target.value }))}
+                  placeholder="Введите ваше имя"
+                  className="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Room ID Input */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  ID комнаты
+                </label>
+                <div className="flex gap-2">
                   <input
                     type="text"
                     value={roomId}
                     onChange={(e) => setRoomId(e.target.value.toUpperCase())}
                     placeholder="Введите ID или оставьте пустым"
                     maxLength={6}
+                    className="flex-1 bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button 
-                    className="generate-btn"
+                    className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors"
                     onClick={() => setRoomId(generateRoomId())}
+                    title="Случайный ID"
                   >
                     🎲
                   </button>
                 </div>
               </div>
               
-              <button className="connect-btn" onClick={connectToRoom}>
-                {roomId ? `Подключиться к ${roomId}` : 'Создать новую комнату'}
+              <button 
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 px-4 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={connectToRoom}
+                disabled={!currentUser.username.trim() || connectionStatus === 'connecting'}
+              >
+                {connectionStatus === 'connecting' 
+                  ? 'Подключение...' 
+                  : roomId 
+                    ? `Подключиться к ${roomId}` 
+                    : 'Создать новую комнату'
+                }
               </button>
               
-              <div className="room-actions">
-                <button className="secondary-btn" onClick={() => {
-                  setShowRooms(!showRooms);
-                  if (!showRooms) loadRooms();
-                }}>
+              <div className="text-center">
+                <button 
+                  className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
+                  onClick={() => {
+                    setShowRooms(!showRooms);
+                    if (!showRooms) loadRooms();
+                  }}
+                >
                   {showRooms ? 'Скрыть комнаты' : 'Показать существующие комнаты'}
                 </button>
               </div>
               
               {showRooms && (
-                <div className="rooms-list">
-                  <h4>Существующие комнаты:</h4>
+                <div className="border-t border-gray-700 pt-4">
+                  <h4 className="text-white font-medium mb-3">Существующие комнаты:</h4>
                   {rooms.length === 0 ? (
-                    <p>Комнат пока нет. Создайте первую!</p>
+                    <p className="text-gray-400 text-sm">Комнат пока нет. Создайте первую!</p>
                   ) : (
-                    <div className="rooms-grid">
+                    <div className="space-y-2">
                       {rooms.map(room => (
-                        <div key={room.id} className="room-item">
-                          <span className="room-id">{room.id}</span>
-                          <span className="room-name">{room.name}</span>
-                          <span className="room-users">👥 {room.active_users}</span>
+                        <div key={room.id} className="flex items-center justify-between bg-gray-700 rounded-lg p-3">
+                          <div>
+                            <span className="text-white font-medium">{room.id}</span>
+                            <div className="text-gray-400 text-xs">👥 {room.active_users} участников</div>
+                          </div>
                           <button 
-                            className="join-room-btn"
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-colors"
                             onClick={() => {
                               setRoomId(room.id);
                               setShowRooms(false);
                             }}
                           >
-                            Присоединиться
+                            Войти
                           </button>
                         </div>
                       ))}
@@ -548,82 +632,115 @@ function App() {
                   )}
                 </div>
               )}
-              
-              <div className="instructions">
-                <p>💡 <strong>Как использовать:</strong></p>
-                <p>1. Введите ID комнаты или создайте новую</p>
-                <p>2. Поделитесь ID с другом</p>
-                <p>3. Наслаждайтесь общением!</p>
-              </div>
             </div>
-          ) : (
-            <div className="voice-controls">
-              <div className="room-info">
-                <h3>Комната: {roomId}</h3>
-                <div className="status-indicators">
-                  <div className={`status-dot ${connectionStatus}`}></div>
-                  <span>Статус: {connectionStatus === 'connected' ? 'Подключен' : 'Подключение...'}</span>
-                  <span>👥 Участников: {activeUsers}</span>
-                  <span>🔗 WebRTC: {peerConnectionState}</span>
-                </div>
-              </div>
 
-              <div className="audio-controls">
-                <button 
-                  className={`control-btn ${isMuted ? 'muted' : ''}`}
-                  onClick={toggleMute}
-                >
-                  {isMuted ? '🔇' : '🎤'}
-                  <span>{isMuted ? 'Включить микрофон' : 'Выключить микрофон'}</span>
-                </button>
-
-                <div className="volume-control">
-                  <label>🔊 Громкость: {volume}%</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={volume}
-                    onChange={(e) => updateVolume(parseInt(e.target.value))}
-                    className="volume-slider"
-                  />
-                </div>
-              </div>
-
-              <div className="audio-levels">
-                <div className="level-indicator">
-                  <label>Ваш микрофон:</label>
-                  <div className="level-bar">
-                    <div 
-                      className="level-fill local" 
-                      style={{ width: `${audioLevel}%` }}
-                    ></div>
-                  </div>
-                  <span>{Math.round(audioLevel)}%</span>
-                </div>
-
-                <div className="level-indicator">
-                  <label>Входящий звук:</label>
-                  <div className="level-bar">
-                    <div 
-                      className="level-fill remote" 
-                      style={{ width: `${remoteAudioLevel}%` }}
-                    ></div>
-                  </div>
-                  <span>{Math.round(remoteAudioLevel)}%</span>
-                </div>
-              </div>
-
-              <button className="disconnect-btn" onClick={disconnectFromRoom}>
-                Отключиться
-              </button>
+            <div className="text-center text-gray-400 text-sm">
+              <p>💡 <strong>Как использовать:</strong></p>
+              <p>1. Введите ваше имя и ID комнаты</p>
+              <p>2. Поделитесь ID с друзьями</p>
+              <p>3. Наслаждайтесь общением!</p>
             </div>
-          )}
+          </div>
         </div>
+      ) : (
+        // Main Discord-like Interface
+        <div className="flex h-screen">
+          {/* Sidebar */}
+          <Sidebar
+            users={users}
+            currentUser={currentUser}
+            isConnected={isConnected}
+            joinVoiceCall={joinVoiceCall}
+            leaveVoiceCall={leaveVoiceCall}
+            isInVoice={isInVoice}
+            isMuted={isMuted}
+            toggleMute={toggleMute}
+            volume={volume}
+            setVolume={updateVolume}
+          />
 
-        {/* Hidden audio element for remote stream */}
-        <audio ref={remoteAudioRef} autoPlay playsInline />
-      </div>
+          {/* Main Content */}
+          <div className="flex-1 bg-gray-700 flex flex-col">
+            {/* Header */}
+            <div className="bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="text-lg font-semibold text-white">
+                  # {roomId}
+                </div>
+                <div className="text-gray-400 text-sm">
+                  {users.length} участников
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-4">
+                {/* Audio Level Indicators */}
+                {isInVoice && (
+                  <div className="flex items-center gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400">Ваш микрофон:</span>
+                      <div className="w-16 h-2 bg-gray-600 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-green-500 transition-all duration-100"
+                          style={{ width: `${audioLevel}%` }}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400">Входящий:</span>
+                      <div className="w-16 h-2 bg-gray-600 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-blue-500 transition-all duration-100"
+                          style={{ width: `${remoteAudioLevel}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                <button
+                  onClick={disconnectFromRoom}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                  Выйти из комнаты
+                </button>
+              </div>
+            </div>
+
+            {/* Content Area */}
+            <div className="flex-1 flex items-center justify-center p-8">
+              <div className="text-center">
+                <h2 className="text-2xl font-semibold text-white mb-2">
+                  Добро пожаловать в комнату {roomId}!
+                </h2>
+                <p className="text-gray-400 mb-6">
+                  {isInVoice 
+                    ? 'Вы в голосовом канале. Используйте чат справа для текстового общения.'
+                    : 'Присоединитесь к голосовому каналу или используйте чат для общения.'
+                  }
+                </p>
+                
+                {connectionStatus !== 'connected' && connectionStatus !== 'connecting' && (
+                  <div className="text-yellow-400">
+                    WebRTC статус: {peerConnectionState}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Chat */}
+          <Chat
+            messages={messages}
+            onSendMessage={sendMessage}
+            onUploadFile={uploadFile}
+            currentUser={currentUser}
+          />
+
+          {/* Hidden audio element for remote stream */}
+          <audio ref={remoteAudioRef} autoPlay playsInline />
+        </div>
+      )}
     </div>
   );
 }
