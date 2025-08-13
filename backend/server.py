@@ -313,34 +313,84 @@ async def upload_file(room_id: str, file: UploadFile = File(...), user_id: str =
     
     return message_dict
 
-# WebSocket endpoint for signaling
+# WebSocket endpoint for signaling and chat
 @api_router.websocket("/ws/{room_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str):
-    await manager.connect(websocket, room_id)
+async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str = "", username: str = ""):
+    if not user_id or not username:
+        await websocket.close(code=4000, reason="Missing user_id or username")
+        return
+        
+    await manager.connect(websocket, room_id, user_id, username)
     try:
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
             
-            # Forward signaling messages to other peers in the room
-            if message.get("type") in ["offer", "answer", "ice-candidate"]:
+            # Handle different message types
+            message_type = message.get("type")
+            
+            if message_type in ["offer", "answer", "ice-candidate"]:
+                # Forward WebRTC signaling messages to other peers in the room
                 await manager.broadcast_to_room(room_id, message, exclude=websocket)
-            elif message.get("type") == "join":
-                # Send current room info
+                
+            elif message_type == "join":
+                # Send current room info and recent messages
                 room_info = await get_room(room_id)
+                messages_response = await get_room_messages(room_id, 50)
                 await manager.send_personal_message({
                     "type": "room_info",
-                    "data": room_info
+                    "data": room_info,
+                    "messages": messages_response["messages"]
                 }, websocket)
                 
+            elif message_type == "join_voice":
+                # User joined voice call
+                await manager.update_voice_status(room_id, user_id, True)
+                await manager.broadcast_to_room(room_id, {
+                    "type": "user_voice_update",
+                    "user_id": user_id,
+                    "username": username,
+                    "is_in_voice": True
+                })
+                
+            elif message_type == "leave_voice":
+                # User left voice call
+                await manager.update_voice_status(room_id, user_id, False)
+                await manager.broadcast_to_room(room_id, {
+                    "type": "user_voice_update",
+                    "user_id": user_id,
+                    "username": username,
+                    "is_in_voice": False
+                })
+                
+            elif message_type == "typing":
+                # Forward typing indicators
+                await manager.broadcast_to_room(room_id, {
+                    "type": "user_typing",
+                    "user_id": user_id,
+                    "username": username,
+                    "is_typing": message.get("is_typing", False)
+                }, exclude=websocket)
+                
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        # Notify others about user leaving
-        if room_id in manager.active_connections:
+        user_data = manager.disconnect(websocket)
+        if user_data:
+            # Update user status in database
+            await db.users.update_one(
+                {"id": user_data['user_id']},
+                {"$set": {"is_online": False}}
+            )
+            
+            # Notify others about user leaving
+            remaining_users = manager.get_room_users(room_id)
             await manager.broadcast_to_room(room_id, {
                 "type": "user_left",
                 "room_id": room_id,
-                "total_users": len(manager.active_connections[room_id])
+                "user": {
+                    "id": user_data['user_id'],
+                    "username": user_data['username']
+                },
+                "total_users": len(remaining_users)
             })
 
 # Include the router in the main app
