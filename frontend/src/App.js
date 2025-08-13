@@ -86,6 +86,12 @@ function App() {
   // Initialize WebRTC
   const initWebRTC = async () => {
     try {
+      // Check if PeerConnection already exists
+      if (peerConnectionRef.current) {
+        console.log('PeerConnection already exists, reusing');
+        return true;
+      }
+
       // Get user media
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
@@ -125,7 +131,7 @@ function App() {
 
       // Handle ICE candidates
       peerConnection.onicecandidate = (event) => {
-        if (event.candidate && websocketRef.current) {
+        if (event.candidate && websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
           websocketRef.current.send(JSON.stringify({
             type: 'ice-candidate',
             candidate: event.candidate
@@ -175,6 +181,14 @@ function App() {
       return;
     }
 
+    // Prevent multiple connection attempts
+    if (isConnected || connectionStatus === 'connecting') {
+      console.log('Already connected or connecting, skipping');
+      return;
+    }
+
+    setConnectionStatus('connecting');
+
     try {
       // First, create room in database if it doesn't exist
       try {
@@ -195,30 +209,48 @@ function App() {
       const webrtcInitialized = await initWebRTC();
       if (!webrtcInitialized) return;
 
+      // Check if WebSocket already exists
+      if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
+        console.log('WebSocket already exists and open, reusing');
+        return;
+      }
+
       // Connect to WebSocket
       const ws = new WebSocket(`${WS_URL}/api/ws/${roomId}`);
       websocketRef.current = ws;
 
       ws.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('WebSocket connected to room:', roomId);
+        console.log('Sending join message...');
         ws.send(JSON.stringify({ type: 'join', room_id: roomId }));
       };
 
       ws.onmessage = async (event) => {
         const message = JSON.parse(event.data);
+        console.log('WebSocket message received:', message.type, message);
         
         switch (message.type) {
           case 'room_info':
             setCurrentRoom(message.data);
             setActiveUsers(message.data.active_users);
+            console.log('Room info received:', message.data);
+            
+            // If we're joining an existing room, wait for offer
+            if (message.data.active_users > 0) {
+              console.log('Joining existing room, waiting for offer from initiator');
+              setConnectionStatus('waiting_for_offer');
+            }
             break;
             
           case 'user_joined':
             setActiveUsers(message.total_users);
-            // Only create offer if we're the first user (initiator)
-            if (peerConnectionRef.current && peerConnectionRef.current.connectionState === 'new') {
+            // Only create offer if we're the first user (initiator) and don't have an offer yet
+            if (peerConnectionRef.current && 
+                peerConnectionRef.current.signalingState === 'stable' && 
+                !peerConnectionRef.current.localDescription &&
+                message.total_users === 2) { // Only when second user joins
               try {
-                console.log('Creating offer as initiator');
+                console.log('Creating offer as initiator (first user)');
                 const offer = await peerConnectionRef.current.createOffer();
                 await peerConnectionRef.current.setLocalDescription(offer);
                 setPeerConnectionState('have-local-offer');
@@ -229,6 +261,8 @@ function App() {
               } catch (error) {
                 console.error('Error creating offer:', error);
               }
+            } else {
+              console.log('Skipping offer creation - not initiator or wrong state');
             }
             break;
             
@@ -237,7 +271,7 @@ function App() {
             break;
             
           case 'offer':
-            if (peerConnectionRef.current) {
+            if (peerConnectionRef.current && peerConnectionRef.current.signalingState === 'stable') {
               try {
                 console.log('Received offer, setting remote description');
                 await peerConnectionRef.current.setRemoteDescription(message.offer);
@@ -252,9 +286,17 @@ function App() {
                   type: 'answer',
                   answer: answer
                 }));
+                
+                // Update connection status
+                setConnectionStatus('connected');
+                setIsConnected(true);
               } catch (error) {
                 console.error('Error handling offer:', error);
+                // Reset connection on error
+                resetWebRTC();
               }
+            } else {
+              console.log('Ignoring offer - wrong signaling state:', peerConnectionRef.current?.signalingState);
             }
             break;
             
@@ -264,6 +306,10 @@ function App() {
                 console.log('Received answer, setting remote description');
                 await peerConnectionRef.current.setRemoteDescription(message.answer);
                 setPeerConnectionState('stable');
+                
+                // Update connection status
+                setConnectionStatus('connected');
+                setIsConnected(true);
               } catch (error) {
                 console.error('Error handling answer:', error);
               }
@@ -337,11 +383,21 @@ function App() {
 
   // Reset WebRTC for reconnection
   const resetWebRTC = () => {
+    console.log('Resetting WebRTC connection');
+    
     if (peerConnectionRef.current) {
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
+    
+    if (websocketRef.current) {
+      websocketRef.current.close();
+      websocketRef.current = null;
+    }
+    
     setPeerConnectionState('new');
+    setConnectionStatus('disconnected');
+    setIsConnected(false);
   };
 
   // Toggle mute
