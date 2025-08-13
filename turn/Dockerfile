@@ -1,51 +1,24 @@
-FROM ubuntu:22.04
+FROM coturn/coturn:latest
 
-# Установка зависимостей
+# Устанавливаем необходимые инструменты
 RUN apt-get update && apt-get install -y \
+    curl \
     wget \
-    build-essential \
-    libssl-dev \
-    libevent-dev \
-    libhiredis-dev \
     python3 \
     python3-pip \
-    procps \
-    git \
-    autoconf \
-    libtool \
-    pkg-config \
+    dnsutils \
     && rm -rf /var/lib/apt/lists/*
-
-# Скачивание и компиляция CoTURN из исходников
-WORKDIR /tmp
-RUN git clone https://github.com/coturn/coturn.git \
-    && cd coturn \
-    && ./configure \
-    && make \
-    && make install
-
-# Создание пользователя
-RUN useradd -r -s /bin/false turnserver
-
-# Создание директорий
-RUN mkdir -p /var/log/turnserver /etc/turnserver \
-    && chown -R turnserver:turnserver /var/log/turnserver /etc/turnserver
 
 # Копирование файлов
 COPY turnserver.conf /etc/turnserver/
-COPY start_turn.sh /usr/local/bin/
+COPY start_turn_simple.sh /usr/local/bin/
 COPY health_check.py /usr/local/bin/
 
-# Установка прав
-RUN chmod +x /usr/local/bin/start_turn.sh \
-    && chmod +x /usr/local/bin/health_check.py \
-    && chown turnserver:turnserver /etc/turnserver/turnserver.conf
+# Делаем скрипт исполняемым
+RUN chmod +x /usr/local/bin/start_turn_simple.sh
 
 # Открытие портов
-EXPOSE 3478 3478/udp 5349 5349/udp 8080
+EXPOSE 3478 3478/udp 5349 5349/udp
 
-# Переключение на пользователя
-USER turnserver
-
-# Запуск TURN сервера и health check
-CMD ["/usr/local/bin/start_turn.sh"]
+# Запуск через упрощенный скрипт
+CMD ["/usr/local/bin/start_turn_simple.sh"]
