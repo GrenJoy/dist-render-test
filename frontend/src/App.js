@@ -53,7 +53,7 @@ function App() {
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       
-      // TURN сервер для надежного WebRTC
+      // TURN сервер для надежного WebRTC (основной)
       {
         urls: process.env.REACT_APP_TURN_SERVER_URL ? 
           `turn:${process.env.REACT_APP_TURN_SERVER_URL.replace('https://', '').replace('http://', '')}:3478` : 
@@ -61,11 +61,7 @@ function App() {
         username: 'voicechat',
         credential: process.env.REACT_APP_TURN_PASSWORD || 'turn123456'
       },
-      {
-        urls: 'turn:turn-dist.onrender.com:3478',
-        username: 'voicechat',
-        credential: 'turn123456'
-      },
+      
       // Fallback TURN серверы (бесплатные)
       {
         urls: 'turn:openrelay.metered.ca:80',
