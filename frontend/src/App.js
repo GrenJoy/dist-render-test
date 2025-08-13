@@ -4,9 +4,9 @@ import axios from 'axios';
 import Sidebar from './components/Sidebar';
 import Chat from './components/Chat';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'https://voice-connect-22.preview.emergentagent.com';
 const API = `${BACKEND_URL}/api`;
-const WS_URL = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+const WS_URL = BACKEND_URL ? BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') : 'wss://voice-connect-22.preview.emergentagent.com';
 
 function App() {
   // Room and connection state
