@@ -32,29 +32,37 @@ function App() {
   const analyserRef = useRef(null);
   const remoteAnalyserRef = useRef(null);
 
-  // WebRTC configuration
+  // WebRTC configuration with free TURN servers
   const rtcConfig = {
     iceServers: [
       // STUN серверы (бесплатные)
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
       
-      // TURN серверы (платные, но работают везде)
-      // Замените на ваши TURN серверы
+      // Бесплатные TURN серверы для работы без VPN
       {
-        urls: 'turn:your-turn-server.com:3478',
-        username: 'your-username',
-        credential: 'your-password'
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
       },
       {
-        urls: 'turn:your-turn-server.com:5349',
-        username: 'your-username',
-        credential: 'your-password',
-        protocol: 'tls'
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
       }
     ],
-    iceCandidatePoolSize: 10
+    iceCandidatePoolSize: 10,
+    iceTransportPolicy: 'all',
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require'
   };
 
   // Generate random room ID
