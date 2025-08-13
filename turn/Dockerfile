@@ -1,5 +1,8 @@
 FROM coturn/coturn:latest
 
+# Переключаемся на root для установки пакетов
+USER root
+
 # Устанавливаем необходимые инструменты
 RUN apt-get update && apt-get install -y \
     curl \
