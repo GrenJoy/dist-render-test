@@ -19,6 +19,7 @@ function App() {
   const [rooms, setRooms] = useState([]);
   const [showRooms, setShowRooms] = useState(false);
   const [peerConnectionState, setPeerConnectionState] = useState('new');
+  const [pendingIceCandidates, setPendingIceCandidates] = useState([]);
 
   // WebRTC and WebSocket refs
   const localStreamRef = useRef(null);
@@ -34,9 +35,26 @@ function App() {
   // WebRTC configuration
   const rtcConfig = {
     iceServers: [
+      // STUN серверы (бесплатные)
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
-    ]
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      
+      // TURN серверы (платные, но работают везде)
+      // Замените на ваши TURN серверы
+      {
+        urls: 'turn:your-turn-server.com:3478',
+        username: 'your-username',
+        credential: 'your-password'
+      },
+      {
+        urls: 'turn:your-turn-server.com:5349',
+        username: 'your-username',
+        credential: 'your-password',
+        protocol: 'tls'
+      }
+    ],
+    iceCandidatePoolSize: 10
   };
 
   // Generate random room ID
@@ -159,11 +177,19 @@ function App() {
       // Handle ICE connection state changes
       peerConnection.oniceconnectionstatechange = () => {
         console.log('ICE connection state:', peerConnection.iceConnectionState);
+        if (peerConnection.iceConnectionState === 'connected') {
+          console.log('ICE connection established successfully!');
+        } else if (peerConnection.iceConnectionState === 'failed') {
+          console.error('ICE connection failed!');
+        }
       };
 
       // Handle ICE gathering state changes
       peerConnection.onicegatheringstatechange = () => {
         console.log('ICE gathering state:', peerConnection.iceGatheringState);
+        if (peerConnection.iceGatheringState === 'complete') {
+          console.log('ICE gathering completed');
+        }
       };
 
       return true;
@@ -277,6 +303,20 @@ function App() {
                 await peerConnectionRef.current.setRemoteDescription(message.offer);
                 setPeerConnectionState('have-remote-offer');
                 
+                // Apply pending ICE candidates
+                if (pendingIceCandidates.length > 0) {
+                  console.log('Applying pending ICE candidates:', pendingIceCandidates.length);
+                  for (const candidate of pendingIceCandidates) {
+                    try {
+                      await peerConnectionRef.current.addIceCandidate(candidate);
+                      console.log('Pending ICE candidate applied');
+                    } catch (error) {
+                      console.error('Error applying pending ICE candidate:', error);
+                    }
+                  }
+                  setPendingIceCandidates([]);
+                }
+                
                 console.log('Creating answer');
                 const answer = await peerConnectionRef.current.createAnswer();
                 await peerConnectionRef.current.setLocalDescription(answer);
@@ -322,11 +362,14 @@ function App() {
             if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
               try {
                 await peerConnectionRef.current.addIceCandidate(message.candidate);
+                console.log('ICE candidate added successfully');
               } catch (error) {
                 console.error('Error adding ICE candidate:', error);
               }
             } else {
-              console.log('Ignoring ICE candidate - no remote description');
+              // Store ICE candidate for later
+              console.log('Storing ICE candidate for later - no remote description yet');
+              setPendingIceCandidates(prev => [...prev, message.candidate]);
             }
             break;
         }
@@ -398,6 +441,7 @@ function App() {
     setPeerConnectionState('new');
     setConnectionStatus('disconnected');
     setIsConnected(false);
+    setPendingIceCandidates([]); // Clear pending ICE candidates
   };
 
   // Toggle mute
