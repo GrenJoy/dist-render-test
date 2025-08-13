@@ -1,0 +1,24 @@
+FROM coturn/coturn:latest
+
+# Установка Python для health check
+RUN apk add --no-cache python3 py3-pip
+
+# Создание директорий
+RUN mkdir -p /etc/turnserver
+
+# Копирование конфигурации
+COPY turnserver.conf /etc/turnserver/
+
+# Копирование health check
+COPY health_check.py /usr/local/bin/
+RUN chmod +x /usr/local/bin/health_check.py
+
+# Копирование скрипта запуска
+COPY start_turn.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/start_turn.sh
+
+# Открытие портов
+EXPOSE 3478 3478/udp 5349 5349/udp 8080
+
+# Запуск
+CMD ["/usr/local/bin/start_turn.sh"]

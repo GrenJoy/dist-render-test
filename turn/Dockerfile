@@ -10,13 +10,17 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     procps \
+    git \
+    autoconf \
+    libtool \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Скачивание и компиляция CoTURN
+# Скачивание и компиляция CoTURN из исходников
 WORKDIR /tmp
-RUN wget https://github.com/coturn/coturn/releases/download/4.6.2/coturn-4.6.2.tar.gz \
-    && tar -xzf coturn-4.6.2.tar.gz \
-    && cd coturn-4.6.2 \
+RUN git clone https://github.com/coturn/coturn.git \
+    && cd coturn \
+    && ./bootstrap \
     && ./configure \
     && make \
     && make install

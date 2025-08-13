@@ -1,9 +1,6 @@
-<<<<<<< HEAD
 # Конфигурация для ручного деплоя на Render
 # Blueprint недоступен в бесплатном плане
 
-=======
->>>>>>> cc1ec942b479383aa3054ad001edaefa68394ada
 services:
   # Backend API Service
   - type: web
@@ -23,15 +20,12 @@ services:
       - key: CORS_ORIGINS
         sync: false
         description: "Frontend URL for CORS (comma-separated if multiple)"
-<<<<<<< HEAD
       - key: TURN_SERVER_URL
         fromService:
           type: web
           name: voice-chat-turn
           property: host
         description: "TURN server URL for WebRTC"
-=======
->>>>>>> cc1ec942b479383aa3054ad001edaefa68394ada
     rootDir: backend
 
   # Frontend Static Site
@@ -47,27 +41,23 @@ services:
           name: voice-chat-backend
           property: host
         description: "Backend service URL"
-<<<<<<< HEAD
       - key: REACT_APP_TURN_SERVER_URL
         fromService:
           type: web
           name: voice-chat-turn
           property: host
         description: "TURN server URL for WebRTC"
-=======
->>>>>>> cc1ec942b479383aa3054ad001edaefa68394ada
     rootDir: frontend
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
 
-<<<<<<< HEAD
-  # TURN Server для WebRTC
+  # TURN Server для WebRTC (использует готовый образ)
   - type: web
     name: voice-chat-turn
     env: docker
-    dockerfilePath: ./turn/Dockerfile
+    dockerfilePath: ./turn/Dockerfile.alternative
     dockerContext: ./turn
     envVars:
       - key: TURN_USERNAME
@@ -84,8 +74,3 @@ services:
 
 # Примечание: MongoDB Atlas нужно настроить отдельно
 # Инструкции в README_RENDER_DEPLOY.md
-=======
-databases:
-  # Note: Render doesn't provide MongoDB, use MongoDB Atlas
-  # Instructions provided in README.md
->>>>>>> cc1ec942b479383aa3054ad001edaefa68394ada
