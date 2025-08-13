@@ -23,5 +23,8 @@ RUN chmod +x /usr/local/bin/start_turn_simple.sh
 # Открытие портов
 EXPOSE 3478 3478/udp 5349 5349/udp
 
+# Переключаемся обратно к непривилегированному пользователю
+USER turnserver
+
 # Запуск через упрощенный скрипт
 CMD ["/usr/local/bin/start_turn_simple.sh"]
