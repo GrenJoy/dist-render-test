@@ -1,0 +1,15 @@
+FROM coturn/coturn:latest
+
+# Копирование файлов
+COPY turnserver.conf /etc/turnserver/
+COPY simple_turn_server.py /usr/local/bin/
+COPY health_check.py /usr/local/bin/
+
+# Делаем скрипт исполняемым
+RUN chmod +x /usr/local/bin/simple_turn_server.py
+
+# Открытие портов
+EXPOSE 3478 3478/udp 5349 5349/udp
+
+# Запуск через Python скрипт
+CMD ["python3", "/usr/local/bin/simple_turn_server.py"]

@@ -1,0 +1,15 @@
+FROM coturn/coturn:latest
+
+# Копирование файлов
+COPY turnserver.conf /etc/turnserver/
+COPY start_turn_minimal.sh /usr/local/bin/
+COPY health_check.py /usr/local/bin/
+
+# Делаем скрипт исполняемым
+RUN chmod +x /usr/local/bin/start_turn_minimal.sh
+
+# Открытие портов
+EXPOSE 3478 3478/udp 5349 5349/udp
+
+# Запуск через минимальный скрипт
+CMD ["/usr/local/bin/start_turn_minimal.sh"]

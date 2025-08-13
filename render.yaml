@@ -47,7 +47,7 @@ services:
   - type: web
     name: voice-chat-turn
     env: docker
-    dockerfilePath: ./turn/Dockerfile
+    dockerfilePath: ./turn/Dockerfile.simple_working
     dockerContext: ./turn
     envVars:
       - key: TURN_USERNAME
