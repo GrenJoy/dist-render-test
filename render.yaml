@@ -28,12 +28,12 @@ services:
         description: "TURN server URL for WebRTC"
     rootDir: backend
 
-  # Frontend Static Site
+  # Frontend Web Service
   - type: web
     name: voice-chat-frontend
-    env: static
+    env: node
     buildCommand: yarn install && yarn build
-    staticPublishPath: ./build
+    startCommand: yarn serve
     envVars:
       - key: REACT_APP_BACKEND_URL
         fromService:
@@ -47,11 +47,13 @@ services:
           name: voice-chat-turn
           property: host
         description: "TURN server URL for WebRTC"
+      - key: REACT_APP_TURN_PASSWORD
+        fromService:
+          type: web
+          name: voice-chat-turn
+          envVarKey: TURN_PASSWORD
+        description: "TURN server password"
     rootDir: frontend
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
 
   # TURN Server для WebRTC (ультра-простой вариант)
   - type: web
