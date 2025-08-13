@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /tmp
 RUN git clone https://github.com/coturn/coturn.git \
     && cd coturn \
-    && ./bootstrap \
+    && autoreconf -fi \
     && ./configure \
     && make \
     && make install

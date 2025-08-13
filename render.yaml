@@ -53,11 +53,11 @@ services:
         source: /*
         destination: /index.html
 
-  # TURN Server для WebRTC (использует готовый образ)
+  # TURN Server для WebRTC (простой вариант без health check)
   - type: web
     name: voice-chat-turn
     env: docker
-    dockerfilePath: ./turn/Dockerfile.alternative
+    dockerfilePath: ./turn/Dockerfile.simple
     dockerContext: ./turn
     envVars:
       - key: TURN_USERNAME
@@ -69,7 +69,6 @@ services:
       - key: EXTERNAL_IP
         sync: false
         description: "External IP address (Render автоматически установит)"
-    healthCheckPath: /health
     rootDir: turn
 
 # Примечание: MongoDB Atlas нужно настроить отдельно
