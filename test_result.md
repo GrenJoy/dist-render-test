@@ -102,68 +102,83 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "Создать голосовое приложение для общения с другом из другой страны с WebRTC для реального времени голосовой связи"
+user_problem_statement: "Переделать бекенд для работы без VPN с бесплатными TURN серверами, создать Discord-подобный интерфейс с темной темой, чатом, отправкой изображений, поддержкой до 4 участников и улучшенным шумоподавлением"
 
 backend:
-  - task: "WebRTC Signaling Server"
+  - task: "Обновление TURN серверов для работы без VPN"
     implemented: true
-    working: true
-    file: "/app/backend/server.py"
+    working: "NA"
+    file: "/app/frontend/src/App.js"
     stuck_count: 0
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Implemented WebSocket-based signaling server for WebRTC peer-to-peer connections with room management"
-      - working: true
-        agent: "testing"
-        comment: "WebSocket signaling server fully functional. Successfully tested WebSocket connections, WebRTC offer/answer/ICE candidate forwarding between peers, user join/leave events, and connection cleanup. All core signaling functionality working correctly."
-  
-  - task: "Room Management API"
-    implemented: true
-    working: true
-    file: "/app/backend/server.py"
-    stuck_count: 0
-    priority: "high"
-    needs_retesting: false
-    status_history:
-      - working: "NA"
-        agent: "main"  
-        comment: "Created REST API endpoints for creating and joining voice chat rooms with MongoDB storage"
-      - working: true
-        agent: "testing"
-        comment: "Room Management API fully functional. All endpoints working: GET /api/ (health check), POST /api/rooms (create room), GET /api/rooms/{room_id} (get room details with active user count), GET /api/rooms (list all rooms). Fixed MongoDB ObjectId serialization issue during testing."
+        comment: "Заменил TURN серверы на бесплатные публичные серверы (openrelay.metered.ca) с поддержкой TCP и UDP, добавил дополнительные конфигурации для надежности"
 
-  - task: "WebSocket Connection Management"
+  - task: "Расширение API для чата и загрузки файлов"
     implemented: true
-    working: true
+    working: "NA"
     file: "/app/backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Implemented ConnectionManager class for handling multiple WebSocket connections per room and message broadcasting"
-      - working: true
-        agent: "testing"
-        comment: "WebSocket Connection Management fully functional. Successfully tested multiple WebSocket connections per room, message broadcasting between room participants, proper connection cleanup when WebSocket disconnects, and accurate active user count updates. All connection management features working correctly."
+        comment: "Добавил модели ChatMessage и User, API endpoints для сообщений (/api/rooms/{room_id}/messages), загрузки изображений (/api/rooms/{room_id}/upload), обновил ConnectionManager для поддержки пользователей"
+
+  - task: "Улучшенный WebSocket для чата и голосовых вызовов"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Обновил WebSocket endpoint для поддержки чата в реальном времени, управления статусом голосовых вызовов, индикаторов печати, передачи информации о пользователях"
 
 frontend:
-  - task: "WebRTC Voice Chat Interface"
+  - task: "Discord-подобный UI/UX дизайн"
     implemented: true
     working: "NA"
-    file: "/app/frontend/src/App.js"
+    file: "/app/frontend/src/App.js, /app/frontend/src/App.css"
     stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Created React component with WebRTC peer connection, audio controls, room joining, and real-time audio level monitoring"
+        comment: "Полностью переделал интерфейс в стиле Discord: трехпанельный layout, темная тема, современные цвета (#2f3136, #36393f), кастомные scrollbars, анимации, статус индикаторы"
 
-  - task: "Audio Level Visualization"
+  - task: "Компонент Sidebar с участниками и голосовым управлением"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/components/Sidebar.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Создал компонент боковой панели с участниками комнаты, кнопками управления голосовыми вызовами, настройками громкости, отображением статуса пользователей"
+
+  - task: "Компонент Chat с сообщениями и загрузкой файлов"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/components/Chat.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Создал компонент чата с отправкой текстовых сообщений, загрузкой изображений, группировкой сообщений по датам, индикаторами печати, современным дизайном"
+
+  - task: "Улучшенная аудио обработка с шумоподавлением"
     implemented: true
     working: "NA"
     file: "/app/frontend/src/App.js"
@@ -173,34 +188,23 @@ frontend:
     status_history:
       - working: "NA"
         agent: "main"
-        comment: "Added visual audio level indicators for both local microphone and remote audio using Web Audio API"
-
-  - task: "Voice Chat UI/UX"
-    implemented: true
-    working: "NA"
-    file: "/app/frontend/src/App.css"
-    stuck_count: 0
-    priority: "medium"
-    needs_retesting: false
-    status_history:
-      - working: "NA"
-        agent: "main"
-        comment: "Designed modern glass-morphism interface with connection controls, mute/unmute buttons, volume sliders, and status indicators"
+        comment: "Добавил фильтры шумоподавления (highpass filter 300Hz, compressor), улучшенный мониторинг аудио уровня, настройки качества звука"
 
 metadata:
   created_by: "main_agent"
-  version: "1.0"
-  test_sequence: 2
+  version: "2.0"
+  test_sequence: 3
   run_ui: false
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "Обновление TURN серверов для работы без VPN"
+    - "Расширение API для чата и загрузки файлов"
+    - "Улучшенный WebSocket для чата и голосовых вызовов"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
   - agent: "main"
-    message: "Created full-stack voice chat application with WebRTC peer-to-peer communication. Backend provides WebSocket signaling server and room management. Frontend has modern UI with audio controls and real-time level monitoring. Ready for backend testing to verify WebSocket connections and API endpoints."
-  - agent: "testing"
-    message: "Backend testing completed successfully. All high-priority backend tasks are working correctly: WebRTC Signaling Server (WebSocket connections, offer/answer/ICE forwarding, user events), Room Management API (all REST endpoints functional), and WebSocket Connection Management (multi-user support, message broadcasting, connection cleanup). Fixed minor MongoDB ObjectId serialization issue during testing. Backend is fully functional and ready for production use."
+    message: "Полностью переделал приложение: 1) Заменил TURN серверы на бесплатные для работы без VPN 2) Создал Discord-подобный интерфейс с темной темой 3) Добавил чат с отправкой изображений 4) Расширил backend для поддержки до 4 участников 5) Улучшил шумоподавление. Готов для backend тестирования всех новых API endpoints и WebSocket функций."
