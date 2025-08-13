@@ -16,6 +16,9 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [activeUsers, setActiveUsers] = useState(0);
   const [volume, setVolume] = useState(80);
+  const [rooms, setRooms] = useState([]);
+  const [showRooms, setShowRooms] = useState(false);
+  const [peerConnectionState, setPeerConnectionState] = useState('new');
 
   // WebRTC and WebSocket refs
   const localStreamRef = useRef(null);
@@ -39,6 +42,16 @@ function App() {
   // Generate random room ID
   const generateRoomId = () => {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
+  };
+
+  // Load existing rooms
+  const loadRooms = async () => {
+    try {
+      const response = await axios.get(`${API}/rooms`);
+      setRooms(response.data);
+    } catch (error) {
+      console.error('Error loading rooms:', error);
+    }
   };
 
   // Audio level monitoring
@@ -131,6 +144,22 @@ function App() {
         }
       };
 
+      // Handle signaling state changes
+      peerConnection.onsignalingstatechange = () => {
+        console.log('Signaling state changed:', peerConnection.signalingState);
+        setPeerConnectionState(peerConnection.signalingState);
+      };
+
+      // Handle ICE connection state changes
+      peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
+      };
+
+      // Handle ICE gathering state changes
+      peerConnection.onicegatheringstatechange = () => {
+        console.log('ICE gathering state:', peerConnection.iceGatheringState);
+      };
+
       return true;
     } catch (error) {
       console.error('Error initializing WebRTC:', error);
@@ -147,6 +176,21 @@ function App() {
     }
 
     try {
+      // First, create room in database if it doesn't exist
+      try {
+        await axios.post(`${API}/rooms`, {
+          name: `Room ${roomId}`,
+          id: roomId
+        });
+        console.log('Room created/verified in database');
+      } catch (error) {
+        if (error.response?.status === 409) {
+          console.log('Room already exists');
+        } else {
+          console.error('Error creating room:', error);
+        }
+      }
+
       // Initialize WebRTC first
       const webrtcInitialized = await initWebRTC();
       if (!webrtcInitialized) return;
@@ -171,14 +215,20 @@ function App() {
             
           case 'user_joined':
             setActiveUsers(message.total_users);
-            // Create and send offer to new user
-            if (peerConnectionRef.current) {
-              const offer = await peerConnectionRef.current.createOffer();
-              await peerConnectionRef.current.setLocalDescription(offer);
-              ws.send(JSON.stringify({
-                type: 'offer',
-                offer: offer
-              }));
+            // Only create offer if we're the first user (initiator)
+            if (peerConnectionRef.current && peerConnectionRef.current.connectionState === 'new') {
+              try {
+                console.log('Creating offer as initiator');
+                const offer = await peerConnectionRef.current.createOffer();
+                await peerConnectionRef.current.setLocalDescription(offer);
+                setPeerConnectionState('have-local-offer');
+                ws.send(JSON.stringify({
+                  type: 'offer',
+                  offer: offer
+                }));
+              } catch (error) {
+                console.error('Error creating offer:', error);
+              }
             }
             break;
             
@@ -188,25 +238,49 @@ function App() {
             
           case 'offer':
             if (peerConnectionRef.current) {
-              await peerConnectionRef.current.setRemoteDescription(message.offer);
-              const answer = await peerConnectionRef.current.createAnswer();
-              await peerConnectionRef.current.setLocalDescription(answer);
-              ws.send(JSON.stringify({
-                type: 'answer',
-                answer: answer
-              }));
+              try {
+                console.log('Received offer, setting remote description');
+                await peerConnectionRef.current.setRemoteDescription(message.offer);
+                setPeerConnectionState('have-remote-offer');
+                
+                console.log('Creating answer');
+                const answer = await peerConnectionRef.current.createAnswer();
+                await peerConnectionRef.current.setLocalDescription(answer);
+                setPeerConnectionState('stable');
+                
+                ws.send(JSON.stringify({
+                  type: 'answer',
+                  answer: answer
+                }));
+              } catch (error) {
+                console.error('Error handling offer:', error);
+              }
             }
             break;
             
           case 'answer':
-            if (peerConnectionRef.current) {
-              await peerConnectionRef.current.setRemoteDescription(message.answer);
+            if (peerConnectionRef.current && peerConnectionRef.current.signalingState === 'have-local-offer') {
+              try {
+                console.log('Received answer, setting remote description');
+                await peerConnectionRef.current.setRemoteDescription(message.answer);
+                setPeerConnectionState('stable');
+              } catch (error) {
+                console.error('Error handling answer:', error);
+              }
+            } else {
+              console.log('Ignoring answer - wrong signaling state:', peerConnectionRef.current?.signalingState);
             }
             break;
             
           case 'ice-candidate':
-            if (peerConnectionRef.current) {
-              await peerConnectionRef.current.addIceCandidate(message.candidate);
+            if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
+              try {
+                await peerConnectionRef.current.addIceCandidate(message.candidate);
+              } catch (error) {
+                console.error('Error adding ICE candidate:', error);
+              }
+            } else {
+              console.log('Ignoring ICE candidate - no remote description');
             }
             break;
         }
@@ -216,11 +290,15 @@ function App() {
         console.log('WebSocket disconnected');
         setIsConnected(false);
         setConnectionStatus('disconnected');
+        // Reset WebRTC for potential reconnection
+        resetWebRTC();
       };
 
       ws.onerror = (error) => {
         console.error('WebSocket error:', error);
         setConnectionStatus('error');
+        // Reset WebRTC on error
+        resetWebRTC();
       };
 
     } catch (error) {
@@ -249,19 +327,21 @@ function App() {
       localStreamRef.current = null;
     }
 
-    // Close audio context
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-
     // Reset state
     setIsConnected(false);
-    setCurrentRoom(null);
     setConnectionStatus('disconnected');
+    setCurrentRoom(null);
     setActiveUsers(0);
-    setAudioLevel(0);
-    setRemoteAudioLevel(0);
+    setPeerConnectionState('new');
+  };
+
+  // Reset WebRTC for reconnection
+  const resetWebRTC = () => {
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    setPeerConnectionState('new');
   };
 
   // Toggle mute
@@ -324,6 +404,43 @@ function App() {
                 {roomId ? `Подключиться к ${roomId}` : 'Создать новую комнату'}
               </button>
               
+              <div className="room-actions">
+                <button className="secondary-btn" onClick={() => {
+                  setShowRooms(!showRooms);
+                  if (!showRooms) loadRooms();
+                }}>
+                  {showRooms ? 'Скрыть комнаты' : 'Показать существующие комнаты'}
+                </button>
+              </div>
+              
+              {showRooms && (
+                <div className="rooms-list">
+                  <h4>Существующие комнаты:</h4>
+                  {rooms.length === 0 ? (
+                    <p>Комнат пока нет. Создайте первую!</p>
+                  ) : (
+                    <div className="rooms-grid">
+                      {rooms.map(room => (
+                        <div key={room.id} className="room-item">
+                          <span className="room-id">{room.id}</span>
+                          <span className="room-name">{room.name}</span>
+                          <span className="room-users">👥 {room.active_users}</span>
+                          <button 
+                            className="join-room-btn"
+                            onClick={() => {
+                              setRoomId(room.id);
+                              setShowRooms(false);
+                            }}
+                          >
+                            Присоединиться
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              
               <div className="instructions">
                 <p>💡 <strong>Как использовать:</strong></p>
                 <p>1. Введите ID комнаты или создайте новую</p>
@@ -339,6 +456,7 @@ function App() {
                   <div className={`status-dot ${connectionStatus}`}></div>
                   <span>Статус: {connectionStatus === 'connected' ? 'Подключен' : 'Подключение...'}</span>
                   <span>👥 Участников: {activeUsers}</span>
+                  <span>🔗 WebRTC: {peerConnectionState}</span>
                 </div>
               </div>
 

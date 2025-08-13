@@ -311,6 +311,97 @@ body {
   box-shadow: 0 6px 20px rgba(244, 67, 54, 0.4);
 }
 
+/* Room Actions */
+.room-actions {
+  margin-top: 15px;
+  text-align: center;
+}
+
+.secondary-btn {
+  padding: 10px 20px;
+  border: 2px solid #2196F3;
+  border-radius: 8px;
+  background: transparent;
+  color: #2196F3;
+  font-size: 0.9em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.secondary-btn:hover {
+  background: #2196F3;
+  color: white;
+  transform: translateY(-1px);
+}
+
+/* Rooms List */
+.rooms-list {
+  margin-top: 20px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.rooms-list h4 {
+  margin: 0 0 15px 0;
+  color: #fff;
+  text-align: center;
+}
+
+.rooms-grid {
+  display: grid;
+  gap: 15px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.room-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.room-id {
+  font-weight: 600;
+  color: #2196F3;
+  font-family: monospace;
+  font-size: 1.1em;
+}
+
+.room-name {
+  color: #fff;
+  flex: 1;
+  margin: 0 15px;
+}
+
+.room-users {
+  color: #4CAF50;
+  margin-right: 15px;
+}
+
+.join-room-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #4CAF50;
+  color: white;
+  font-size: 0.9em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.join-room-btn:hover {
+  background: #45a049;
+  transform: translateY(-1px);
+}
+
 /* Responsive Design */
 @media (max-width: 480px) {
   .container {

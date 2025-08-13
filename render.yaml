@@ -10,10 +10,13 @@ services:
     envVars:
       - key: MONGO_URL
         sync: false
+        description: "MongoDB Atlas connection string"
       - key: DB_NAME
         value: voice_chat_db
+        description: "Database name"
       - key: CORS_ORIGINS
         sync: false
+        description: "Frontend URL for CORS (comma-separated if multiple)"
     rootDir: backend
 
   # Frontend Static Site
@@ -28,6 +31,7 @@ services:
           type: web
           name: voice-chat-backend
           property: host
+        description: "Backend service URL"
     rootDir: frontend
     routes:
       - type: rewrite

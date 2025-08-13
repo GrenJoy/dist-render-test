@@ -81,15 +81,47 @@ manager = ConnectionManager()
 async def root():
     return {"message": "Voice Chat API"}
 
+@api_router.get("/health")
+async def health_check():
+    try:
+        # Test MongoDB connection
+        await db.command("ping")
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "database": "disconnected",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
 @api_router.post("/rooms")
 async def create_room(room_data: dict):
+    # Check if room already exists
+    existing_room = await db.rooms.find_one({"id": room_data.get("id")})
+    if existing_room:
+        # Return existing room
+        if "_id" in existing_room:
+            del existing_room["_id"]
+        existing_room["active_users"] = len(manager.active_connections.get(existing_room["id"], []))
+        return existing_room
+    
+    # Create new room
     room = {
-        "id": str(uuid.uuid4()),
-        "name": room_data["name"],
+        "id": room_data.get("id", str(uuid.uuid4())),
+        "name": room_data.get("name", "New Room"),
         "created_at": datetime.utcnow(),
         "active_users": 0
     }
     await db.rooms.insert_one(room)
+    
+    # Return room without ObjectId
+    if "_id" in room:
+        del room["_id"]
     return room
 
 @api_router.get("/rooms/{room_id}")
