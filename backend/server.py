@@ -212,9 +212,10 @@ async def get_room(room_id: str):
     if "_id" in room:
         del room["_id"]
     
-    # Count active connections
-    active_users = len(manager.active_connections.get(room_id, []))
-    room["active_users"] = active_users
+    # Get active users
+    active_users = manager.get_room_users(room_id)
+    room["active_users"] = len(active_users)
+    room["users"] = active_users
     
     return room
 
@@ -225,8 +226,92 @@ async def get_rooms():
         # Convert ObjectId to string and remove it
         if "_id" in room:
             del room["_id"]
-        room["active_users"] = len(manager.active_connections.get(room["id"], []))
+        active_users = manager.get_room_users(room["id"])
+        room["active_users"] = len(active_users)
+        room["users"] = active_users
     return rooms
+
+# Chat endpoints
+@api_router.get("/rooms/{room_id}/messages")
+async def get_room_messages(room_id: str, limit: int = 50):
+    messages = await db.messages.find({"room_id": room_id}).sort("timestamp", -1).limit(limit).to_list(limit)
+    for message in messages:
+        if "_id" in message:
+            del message["_id"]
+    return {"messages": list(reversed(messages))}
+
+@api_router.post("/rooms/{room_id}/messages")
+async def send_message(room_id: str, message_data: dict):
+    chat_message = ChatMessage(
+        room_id=room_id,
+        user_id=message_data.get("user_id"),
+        username=message_data.get("username"),
+        message=message_data.get("message"),
+        message_type=message_data.get("message_type", "text")
+    )
+    
+    # Save to database
+    message_dict = chat_message.dict()
+    await db.messages.insert_one(message_dict)
+    
+    # Remove _id for response
+    if "_id" in message_dict:
+        del message_dict["_id"]
+    
+    # Broadcast to room via WebSocket
+    await manager.broadcast_to_room(room_id, {
+        "type": "new_message",
+        "message": message_dict
+    })
+    
+    return message_dict
+
+@api_router.post("/rooms/{room_id}/upload")
+async def upload_file(room_id: str, file: UploadFile = File(...), user_id: str = Form(...), username: str = Form(...)):
+    # Validate file type
+    allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Неподдерживаемый тип файла")
+    
+    # Generate unique filename
+    file_extension = file.filename.split('.')[-1]
+    unique_filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = uploads_dir / unique_filename
+    
+    # Save file
+    try:
+        async with aiofiles.open(file_path, 'wb') as f:
+            content = await file.read()
+            await f.write(content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Ошибка при сохранении файла")
+    
+    # Create message with file
+    file_url = f"/uploads/{unique_filename}"
+    chat_message = ChatMessage(
+        room_id=room_id,
+        user_id=user_id,
+        username=username,
+        message=f"Отправил изображение: {file.filename}",
+        message_type="image",
+        file_url=file_url
+    )
+    
+    # Save to database
+    message_dict = chat_message.dict()
+    await db.messages.insert_one(message_dict)
+    
+    # Remove _id for response
+    if "_id" in message_dict:
+        del message_dict["_id"]
+    
+    # Broadcast to room
+    await manager.broadcast_to_room(room_id, {
+        "type": "new_message",
+        "message": message_dict
+    })
+    
+    return message_dict
 
 # WebSocket endpoint for signaling
 @api_router.websocket("/ws/{room_id}")
