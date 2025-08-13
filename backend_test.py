@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv('/app/frontend/.env')
 
 # Get backend URL from frontend environment
-BACKEND_URL = os.getenv('REACT_APP_BACKEND_URL', 'https://pychat-voice.preview.emergentagent.com')
+BACKEND_URL = os.getenv('REACT_APP_BACKEND_URL', 'https://voice-connect-22.preview.emergentagent.com')
 API_BASE = f"{BACKEND_URL}/api"
 WS_BASE = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + "/api"
 
