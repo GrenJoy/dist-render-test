@@ -46,17 +46,23 @@ function App() {
   const remoteAudioRef = useRef(null);
   const audioContextRef = useRef(null);
 
-  // WebRTC configuration with free TURN servers
+  // WebRTC configuration with TURN server
   const rtcConfig = {
     iceServers: [
       // STUN серверы (бесплатные)
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
       
-      // Бесплатные TURN серверы для работы без VPN
+      // TURN сервер для надежного WebRTC
+      {
+        urls: process.env.REACT_APP_TURN_SERVER_URL ? 
+          `turn:${process.env.REACT_APP_TURN_SERVER_URL.replace('https://', '').replace('http://', '')}:3478` : 
+          'turn:turn-dist.onrender.com:3478',
+        username: 'voicechat',
+        credential: process.env.REACT_APP_TURN_PASSWORD || 'turn123456'
+      },
+      
+      // Fallback TURN серверы (бесплатные)
       {
         urls: 'turn:openrelay.metered.ca:80',
         username: 'openrelayproject',
@@ -64,11 +70,6 @@ function App() {
       },
       {
         urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      },
-      {
-        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
         username: 'openrelayproject',
         credential: 'openrelayproject'
       }
@@ -212,12 +213,33 @@ function App() {
         setConnectionStatus(peerConnection.connectionState);
         setPeerConnectionState(peerConnection.signalingState);
         
+        console.log('WebRTC connection state:', peerConnection.connectionState);
+        console.log('WebRTC signaling state:', peerConnection.signalingState);
+        
         if (peerConnection.connectionState === 'connected') {
           console.log('WebRTC connected successfully!');
         } else if (peerConnection.connectionState === 'failed') {
           console.error('WebRTC connection failed!');
           resetWebRTC();
+        } else if (peerConnection.connectionState === 'disconnected') {
+          console.warn('WebRTC disconnected, attempting to reconnect...');
         }
+      };
+
+      // Handle ICE connection state changes
+      peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', peerConnection.iceConnectionState);
+        
+        if (peerConnection.iceConnectionState === 'failed') {
+          console.error('ICE connection failed, trying to restart ICE...');
+          peerConnection.restartIce();
+        }
+      };
+
+      // Handle signaling state changes
+      peerConnection.onsignalingstatechange = () => {
+        console.log('Signaling state changed:', peerConnection.signalingState);
+        setPeerConnectionState(peerConnection.signalingState);
       };
 
       return true;
@@ -331,47 +353,70 @@ function App() {
         break;
         
       case 'offer':
+        console.log('Received offer, current signaling state:', peerConnectionRef.current?.signalingState);
         if (peerConnectionRef.current && peerConnectionRef.current.signalingState === 'stable') {
           try {
+            console.log('Setting remote description from offer...');
             await peerConnectionRef.current.setRemoteDescription(message.offer);
+            console.log('Remote description set successfully');
             
             // Apply pending ICE candidates
             for (const candidate of pendingIceCandidates) {
-              await peerConnectionRef.current.addIceCandidate(candidate);
+              try {
+                await peerConnectionRef.current.addIceCandidate(candidate);
+                console.log('Added pending ICE candidate:', candidate);
+              } catch (error) {
+                console.warn('Error adding pending ICE candidate:', error);
+              }
             }
             setPendingIceCandidates([]);
             
+            console.log('Creating answer...');
             const answer = await peerConnectionRef.current.createAnswer();
             await peerConnectionRef.current.setLocalDescription(answer);
+            console.log('Answer created and set locally');
             
             ws.send(JSON.stringify({
               type: 'answer',
               answer: answer
             }));
+            console.log('Answer sent to peer');
           } catch (error) {
             console.error('Error handling offer:', error);
+            resetWebRTC();
           }
+        } else {
+          console.warn('Cannot handle offer in current state:', peerConnectionRef.current?.signalingState);
         }
         break;
         
       case 'answer':
+        console.log('Received answer, current signaling state:', peerConnectionRef.current?.signalingState);
         if (peerConnectionRef.current && peerConnectionRef.current.signalingState === 'have-local-offer') {
           try {
+            console.log('Setting remote description from answer...');
             await peerConnectionRef.current.setRemoteDescription(message.answer);
+            console.log('Remote description set from answer successfully');
           } catch (error) {
             console.error('Error handling answer:', error);
+            resetWebRTC();
           }
+        } else {
+          console.warn('Cannot handle answer in current state:', peerConnectionRef.current?.signalingState);
         }
         break;
         
       case 'ice-candidate':
+        console.log('Received ICE candidate, remote description exists:', !!peerConnectionRef.current?.remoteDescription);
         if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
           try {
             await peerConnectionRef.current.addIceCandidate(message.candidate);
+            console.log('ICE candidate added successfully');
           } catch (error) {
             console.error('Error adding ICE candidate:', error);
           }
         } else {
+          console.log('Storing ICE candidate for later, current count:', pendingIceCandidates.length);
           setPendingIceCandidates(prev => [...prev, message.candidate]);
         }
         break;
@@ -380,8 +425,12 @@ function App() {
 
   // Join voice call
   const joinVoiceCall = async () => {
+    console.log('Joining voice call...');
     const webrtcInitialized = await initWebRTC();
-    if (!webrtcInitialized) return;
+    if (!webrtcInitialized) {
+      console.error('Failed to initialize WebRTC');
+      return;
+    }
 
     setIsInVoice(true);
     
@@ -389,17 +438,27 @@ function App() {
       websocketRef.current.send(JSON.stringify({ type: 'join_voice' }));
       
       // Create offer if we're the initiator
-      if (users.filter(u => u.is_in_voice).length === 0) {
+      const usersInVoice = users.filter(u => u.is_in_voice);
+      console.log('Users in voice:', usersInVoice.length);
+      
+      if (usersInVoice.length === 0) {
         try {
+          console.log('Creating offer as initiator...');
           const offer = await peerConnectionRef.current.createOffer();
           await peerConnectionRef.current.setLocalDescription(offer);
+          console.log('Offer created and set locally');
+          
           websocketRef.current.send(JSON.stringify({
             type: 'offer',
             offer: offer
           }));
+          console.log('Offer sent to peer');
         } catch (error) {
           console.error('Error creating offer:', error);
+          resetWebRTC();
         }
+      } else {
+        console.log('Joining as participant, waiting for offer...');
       }
     }
   };
@@ -498,18 +557,39 @@ function App() {
 
   // Reset WebRTC
   const resetWebRTC = () => {
+    console.log('Resetting WebRTC connection...');
+    
     if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
+      try {
+        peerConnectionRef.current.close();
+      } catch (error) {
+        console.warn('Error closing peer connection:', error);
+      }
       peerConnectionRef.current = null;
     }
     
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
+      try {
+        localStreamRef.current.getTracks().forEach(track => {
+          track.stop();
+          console.log('Stopped track:', track.kind);
+        });
+      } catch (error) {
+        console.warn('Error stopping tracks:', error);
+      }
       localStreamRef.current = null;
+    }
+    
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current = null;
     }
     
     setPeerConnectionState('new');
     setPendingIceCandidates([]);
+    setConnectionStatus('disconnected');
+    setIsInVoice(false);
+    
+    console.log('WebRTC reset completed');
   };
 
   // Cleanup on unmount
